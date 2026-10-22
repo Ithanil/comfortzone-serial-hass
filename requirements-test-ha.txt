@@ -1,0 +1,3 @@
+# Python 3.14; the harness pins Home Assistant 2026.10.2 and pytest 9.0.3.
+-r requirements-test.txt
+pytest-homeassistant-custom-component==0.13.373

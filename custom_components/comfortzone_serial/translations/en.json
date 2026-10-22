@@ -1,0 +1,88 @@
+{
+  "title": "ComfortZone Serial",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Set up the local receiver",
+        "description": "Listen for UDP from the Moxa. This does not configure the Moxa or verify the pump connection. Configure the Moxa destination to this Home Assistant host and local UDP port. New entries start in observation-only mode.",
+        "data": {
+          "source_ip": "Moxa source IPv4 address",
+          "bind_host": "Local listening IPv4 address",
+          "bind_port": "Local UDP port",
+          "source_port": "Moxa source UDP port (0 accepts any)"
+        }
+      },
+      "reconfigure": {
+        "title": "Change receiver network settings",
+        "description": "Change the local UDP listener and expected Moxa sender. This reloads the integration and keeps the selected decoder profile. It does not configure the Moxa or verify the pump connection.",
+        "data": {
+          "source_ip": "Moxa source IPv4 address",
+          "bind_host": "Local listening IPv4 address",
+          "bind_port": "Local UDP port",
+          "source_port": "Moxa source UDP port (0 accepts any)"
+        }
+      }
+    },
+    "error": {
+      "invalid_network": "Enter numeric unicast IPv4 addresses and valid ports. The local listening address may be 0.0.0.0.",
+      "source_already_configured": "An entry already receives this Moxa source. Reconfigure the existing entry.",
+      "bind_conflict": "Another ComfortZone entry uses an overlapping local listening address and port. Choose a separate local port."
+    },
+    "abort": {
+      "reconfigure_successful": "Receiver settings updated."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Decoder and freshness",
+        "description": "Observation only preserves diagnostic frames without creating measurements. The RX50 reference layout is provisional: its mapping and fault values have not been validated on this EX35. Select it only for comparison with real captures and pump readings. All times below are seconds.",
+        "data": {
+          "profile": "Decoder profile",
+          "stale_timeout": "Measurement freshness limit",
+          "partial_timeout": "Incomplete frame timeout",
+          "gap_timeout": "Reset partial data after a source gap"
+        }
+      }
+    },
+    "error": {
+      "invalid_options": "Check the time limits. The source-gap timeout must be at least the incomplete-frame timeout."
+    }
+  },
+  "selector": {
+    "profile": {
+      "options": {
+        "observe_only": "Observation only (default)",
+        "czbridge_rx50_temperatures_v1": "RX50 temperatures — provisional reference layout"
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "outdoor_temperature": {
+        "name": "Outdoor temperature"
+      },
+      "flow_water_temperature": {
+        "name": "Flow water temperature"
+      },
+      "return_water_temperature": {
+        "name": "Return water temperature"
+      },
+      "indoor_temperature": {
+        "name": "Indoor temperature"
+      },
+      "hot_gas_temperature": {
+        "name": "Hot gas temperature"
+      },
+      "exchanger_outlet_temperature": {
+        "name": "Exchanger outlet temperature"
+      },
+      "evaporator_inlet_temperature": {
+        "name": "Evaporator inlet temperature"
+      },
+      "exhaust_air_temperature": {
+        "name": "Exhaust air temperature"
+      }
+    }
+  }
+}

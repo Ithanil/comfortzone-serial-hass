@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <title>ComfortZone Serial</title>
+  <desc>Original project icon: a house and a temperature sensor.</desc>
+  <rect x="8" y="8" width="240" height="240" rx="56" fill="#125b68"/>
+  <path d="M48 112 128 48 208 112 M68 100v100h120V100"
+        fill="none" stroke="#fff" stroke-width="16" stroke-linecap="round"
+        stroke-linejoin="round"/>
+  <path d="M128 108v54" fill="none" stroke="#ffcb69" stroke-width="16"
+        stroke-linecap="round"/>
+  <circle cx="128" cy="170" r="20" fill="#ffcb69"/>
+</svg>
