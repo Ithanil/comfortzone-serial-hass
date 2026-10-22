@@ -181,7 +181,53 @@ The earlier **299-test** result above belongs to the previous implementation rev
 Test reruns for this rename were stopped at the owner's request; no new suite result
 is claimed. Hardware and official distribution validation remain outstanding.
 
+## Next package: TCP acquisition (planned, not started)
+
+Recorded 2026-10-22. The owner intends to continue with TCP implementation after
+reviewing the hardware/documentation additions and compacting the conversation.
+The present task ends at that documentation checkpoint. No TCP runtime, tools,
+tests, configuration migration or device setup has been implemented or validated.
+
+The discussed arrangement is **Moxa raw TCP Server mode**, with the integration
+acting as a client that connects and reads without sending application data.
+TCP handshakes, acknowledgements and connection management are network traffic,
+not pump commands. Receive-only continues to prohibit serial requests, writes
+and polling; an existing UDP-specific audit forbidding all `connect` calls must
+not be mistaken for that broader communication constraint.
+
+When the owner resumes, divide implementation into reviewable packages and
+cover the following work inside this standalone integration boundary:
+
+- Add configurable TCP acquisition and clean connect/disconnect/reconnect,
+  cancellation and unload handling. Review the existing UDP config-entry
+  behavior and migration requirements instead of silently switching transports.
+- Reuse the framing/decoder where appropriate. TCP read chunks are not protocol
+  frames or UDP datagrams. Bound buffering and reset partial-frame/session state
+  across reconnects; handle disconnect availability and silence/freshness.
+- Review delayed/buffered bytes explicitly: network reliability does not give
+  pump-generated timestamps or prove an arriving backlog is a fresh measurement.
+- Extend bounded raw recording and offline replay with explicit TCP provenance
+  and connection boundaries. Preserve compatibility with saved `comfortzone-udp`
+  version 1 files; choose and document any format change during implementation.
+- Add focused synthetic stream/lifecycle and Home Assistant tests, including
+  absence of application writes, and update standalone setup/distribution docs.
+  The historical 299-test result above covers the UDP implementation only.
+
+Hardware status at handoff: Moxa received; disconnected pump/Loggamera voltages
+and Moxa idle voltages support RS-232. The owner ordered connector parts carrying
+only selected data/ground contacts after cancelling a control-line-crossing
+adapter. Assembly, continuity, applied serial settings, bench byte transfer and
+real EX35 captures remain unverified. See the self-contained
+[diagnostic hardware notes](diagnostics.md#before-a-real-capture). TCP work does
+not authorize active pump requests or turn synthetic tests into hardware evidence.
+
 ## Validation that still needs real captures
+
+The owner's DC socket readings reported on 2026-10-19 and 2026-10-22 make RS-232 the leading
+electrical-interface hypothesis, superseding the earlier provisional two-wire
+RS-485 plan. The [diagnostic guide](diagnostics.md#before-a-real-capture) records
+the readings and their limits. These are not serial captures or hardware
+validation of this integration; the software test results above remain synthetic.
 
 1. Confirm installed cable signals, electrical interface, connector mapping and
    reference ground before any pump connection. D-sub shell compatibility is not

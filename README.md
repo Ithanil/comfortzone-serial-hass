@@ -21,10 +21,24 @@ for evaluation. HACS installation requires the repository to be public and the
 distribution checks to pass. Official HACS/hassfest checks and a deployed
 installation remain unverified; version `0.1.0` is unreleased.
 
-No live serial data has been obtained. Two-wire RS-485, cable pin assignments,
-19200/8N1, controller layout and continued traffic with Loggamera absent all still
-need validation on the installation. Tests use synthetic frames exclusively.
-Neither passing them nor selecting a profile establishes hardware compatibility.
+**Follow-up, 2026-10-22:** TCP acquisition is planned after the current
+documentation checkpoint and conversation compaction. It is not implemented;
+runtime and capture/replay remain UDP-only. See the
+[next-package handoff](docs/implementation.md#next-package-tcp-acquisition-planned-not-started).
+
+No live serial data has been obtained. Owner-reported DC voltages at the powered
+Loggamera socket now make **RS-232 the leading hypothesis; its pinout remains
+unconfirmed**, superseding the earlier provisional two-wire RS-485 plan. See the
+[hardware assumptions and readings](docs/diagnostics.md#before-a-real-capture).
+Cable signals, 19200/8N1, controller layout and continued traffic with Loggamera
+absent all still need validation on the installation. Tests use synthetic frames
+exclusively. Neither passing them nor selecting a profile establishes hardware
+compatibility.
+The owner has ordered connector parts to carry only selected data/ground
+signals, replacing a cancelled adapter with extra control connections. Assembly
+and continuity checks are pending; the [diagnostic guide](docs/diagnostics.md#before-a-real-capture)
+distinguishes three-wire software receive-only operation from omitting the
+Moxa transmitter wire entirely.
 
 ## Current implementation
 

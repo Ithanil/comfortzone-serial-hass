@@ -62,10 +62,12 @@ To use the [raw capture command](diagnostics.md) on the same host and port, disa
 the HA entry first. It releases its socket. Re-enable the entry after recording.
 The optional capture command is development tooling and is not started by HA.
 
-Wiring, two-wire RS-485, baud rate and traffic without Loggamera remain unverified.
-Confirm electrical compatibility before attaching the pump cable. Software reception
-does not electrically disable the Moxa's transmitter; see the diagnostic guide's
-hardware assumptions and the reference audit.
+RS-232 is now the leading hypothesis at the Loggamera socket, based on the
+owner's DC voltage readings; the interface, cable pinout, baud rate and traffic
+without Loggamera remain unverified. Confirm electrical compatibility before
+attaching the pump cable. Software reception does not electrically disable the
+Moxa's transmitter; see the [diagnostic guide's hardware assumptions](diagnostics.md#before-a-real-capture)
+and the reference audit.
 
 ## Decoder and timing options
 

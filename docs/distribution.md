@@ -35,7 +35,7 @@ Before the first release:
    virtual environments, caches, coverage output and private captures. The manifest
    links to this repository's documentation and issues.
 2. HACS requires a public GitHub repository. Set a description, enable issues and
-   add relevant topics such as `home-assistant`, `hacs`, `comfortzone` and `rs485`.
+   add relevant topics such as `home-assistant`, `hacs`, `comfortzone` and `moxa`.
    See the [general HACS requirements](https://www.hacs.xyz/docs/publish/start/).
 3. Enable Actions and run both included workflows. Require the tests, Ruff,
    hassfest and HACS validation to pass. Resolve validation failures before release.

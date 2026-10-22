@@ -11,14 +11,60 @@ Home Assistant setup and entities are documented in the
 
 The tools only receive UDP; they never send requests, acknowledgements, discovery
 probes or serial commands. They do not configure the Moxa. The Moxa can still
-transmit network data onto its serial pair, so software receive-only operation
-does not establish a hardware receive-only guarantee.
+transmit network data onto its serial connection, so software receive-only
+operation does not establish a hardware receive-only guarantee.
 
 Confirm the installed cable's electrical interface and pin assignment before
-connecting it. Two-wire RS-485 and 19200/8N1 remain working hypotheses. The known
-community layout is not yet verified on this EX35, and traffic without Loggamera
-has not been demonstrated. Do not infer the pump cable's wiring from the Moxa DB9
-pinout or the community RJ11 panel-bus pinout.
+connecting it. **RS-232 is now the leading hypothesis at the Loggamera socket;
+its pinout remains unconfirmed.** The owner reported these DC multimeter readings
+on 2026-10-19 at the powered LMCZEXG-07's female nine-pin D-sub socket, with the
+black probe on pin 5: pin 2 measured −5.575 V and pin 3 measured steady 0 V.
+On 2026-10-22 the owner repeated these values using a numbered male/female
+breakout adapter, and measured the pump cable end at approximately 0 V on pin 2
+and −6.68 V on pin 3, again relative to pin 5. The devices were explicitly
+confirmed disconnected from each other during measurement. Exact measurement
+times were not supplied; adapter continuity and signal ground remain unverified.
+
+These readings fit an idle RS-232 output on pin 2 and a possible input on pin 3,
+the conventional DCE arrangement. The pump readings support the complementary
+DTE arrangement: output on pin 3 and input on pin 2. They supersede the earlier
+provisional two-wire RS-485 plan for this connection. They do not establish a waveform,
+the pump cable's mapping or the application protocol. The
+[Moxa P5150A quick guide](https://moxa.com/getmedia/4ccea339-54d9-4f3e-8fe4-d768ab08f1b1/moxa-nport-p5150a-series-qig-v2.3.pdf),
+page 5, defines its RS-232 receive input as pin 2, so replacement may require a
+crossover and gender adaptation after the actual cable signals are identified. See
+[TI's electrical specification](https://www.ti.com/lit/an/slla037a/slla037a.pdf)
+and [Analog Devices' DCE pinout explanation](https://www.analog.com/media/en/technical-documentation/application-notes/67805834ee_27.pdf)
+for the general interpretation, not a Loggamera-specific pinout.
+
+**19200/8N1 remains an unverified hypothesis** from the related panel-bus
+reference. The known community layout is not yet verified on this EX35/X2
+connection, and traffic without Loggamera has not been demonstrated. Do not
+infer the pump cable's wiring from the Moxa DB9 pinout or the community RJ11
+panel-bus pinout. UDP capture works independently of the serial electrical
+standard; no decoder profile is validated by the voltage readings.
+
+Later on 2026-10-22, the owner reported Moxa pins 4, 3, 2 and 1 at approximately
++6.5 V, −6.1 V, +0.25 V and 0 V respectively, relative to pin 5. These fit the
+documented DTR output, TxD output, RxD input and DCD input roles. Pump contacts
+6–9 measured 0 V relative to pin 5, which does not establish their functions.
+The owner cancelled a null-modem adapter with extra control connections and
+ordered a female DB9-to-three-wire lead (pins 2, 3, 5) plus a solder-free female
+connector. Delivery, assembly and continuity verification remain pending.
+
+The proposed three-wire mapping is **pump 3 → Moxa 2**, **Moxa 3 → pump 2** and
+**5 ↔ 5**, with all other signal contacts unconnected. It matches the inferred
+data/ground arrangement at the Loggamera connector, not a proven full pinout.
+That arrangement still relies on software receive-only behavior. The selected
+parts also permit omitting the Moxa 3 → pump 2 wire, physically removing the
+reverse data path; the actually assembled variant must be recorded. Check
+continuity with the assembly disconnected from both devices, using numbered
+contacts rather than assumed wire colors or connector viewing orientation.
+No pump connection or serial byte-transfer result has been reported.
+
+TCP is planned for a later software package after the documentation checkpoint.
+These commands and the JSONL version 1 format currently support UDP only;
+changing the Moxa to TCP mode will not make the existing receiver consume it.
 
 Once the connection and serial settings are established, configure Moxa UDP unicast
 to the **collector computer's actual IP address and destination port** (default
