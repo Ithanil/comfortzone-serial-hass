@@ -13,5 +13,5 @@ async def async_get_config_entry_diagnostics(
     # sharing. Keep them exact for diagnosis, outside recorded entity attributes.
     return async_redact_data(
         entry.runtime_data.diagnostics(),
-        {"source", "source_ip", "bind_host", "session_id"},
+        {"source", "source_ip", "bind_host", "session_id", "address", "pump_address"},
     )

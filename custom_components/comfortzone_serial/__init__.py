@@ -1,4 +1,4 @@
-"""Receive-only ComfortZone Serial; offline tooling needs no HA installation."""
+"""Read-only ComfortZone Serial; offline tooling needs no HA installation."""
 
 from __future__ import annotations
 

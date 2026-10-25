@@ -1,4 +1,4 @@
-"""Bounded ComfortZone framing based on the provisional reference envelope.
+"""Bounded ComfortZone framing, verified against captured EX35 traffic.
 
 No synchronization marker is established. CRC/length checks can accidentally
 accept noise; a valid envelope is not evidence of a supported measurement layout.

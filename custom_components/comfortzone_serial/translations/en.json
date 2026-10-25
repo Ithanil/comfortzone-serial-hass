@@ -35,25 +35,30 @@
   "options": {
     "step": {
       "init": {
-        "title": "Decoder and freshness",
-        "description": "Observation only preserves diagnostic frames without creating measurements. The RX50 reference layout is provisional: its mapping and fault values have not been validated on this EX35. Select it only for comparison with real captures and pump readings. All times below are seconds.",
+        "title": "Temperatures and local read polling",
+        "description": "For standalone EX35 operation, select the EX35 0b15 profile and enable read polling with Loggamera disconnected. Polling requests temperatures only. Outdoor, indoor and hot-water sensors are enabled by default; six reference-mapped sensors can be enabled individually. Times are in seconds.",
         "data": {
           "profile": "Decoder profile",
           "stale_timeout": "Measurement freshness limit",
           "partial_timeout": "Incomplete frame timeout",
-          "gap_timeout": "Reset partial data after a source gap"
+          "gap_timeout": "Reset partial data after a source gap",
+          "polling_enabled": "Send temperature read requests",
+          "poll_interval": "Read interval",
+          "destination_port": "Moxa UDP listen port for requests",
+          "pump_address": "Pump protocol address (8 hex characters)"
         }
       }
     },
     "error": {
-      "invalid_options": "Check the time limits. The source-gap timeout must be at least the incomplete-frame timeout."
+      "invalid_options": "Polling requires the EX35 profile, a valid 8-character hex pump address and port, an interval of 15–3600 seconds, a freshness limit longer than the interval, and an incomplete-frame timeout below 10 seconds. The source-gap timeout must be at least the incomplete-frame timeout."
     }
   },
   "selector": {
     "profile": {
       "options": {
         "observe_only": "Observation only (default)",
-        "czbridge_rx50_temperatures_v1": "RX50 temperatures — provisional reference layout"
+        "czbridge_rx50_temperatures_v1": "RX50 temperatures — provisional reference layout",
+        "ex35_0b15_temperatures_v1": "EX35 temperatures — captured 0b15 layout"
       }
     }
   },
@@ -82,6 +87,9 @@
       },
       "exhaust_air_temperature": {
         "name": "Exhaust air temperature"
+      },
+      "hot_water_temperature": {
+        "name": "Hot water temperature"
       }
     }
   }

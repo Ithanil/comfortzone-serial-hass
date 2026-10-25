@@ -1,5 +1,7 @@
 # Reference and licensing audit
 
+> The pinned upstream/license audit below records the original implementation. For current installation evidence and working RS-422/polling setup see [research](research.md) and the installation-evidence section at the end.
+
 Inspected 2026-10-18, before writing implementation code. New runtime and tests
 are independently written for this project and licensed under [MIT](../LICENSE).
 No upstream implementation, fixtures, images or dependency has been vendored or
@@ -78,3 +80,14 @@ no vendor, HA or upstream-project logo was copied. Official
 [hassfest action configuration](https://github.com/home-assistant/actions/tree/master/hassfest)
 and the `actions/checkout` and `actions/setup-python` v6 definitions were also
 checked. The prepared workflows have not run; see the package 4 validation record.
+
+## Installation evidence, 2026-10-25
+
+Owner captures now establish the `0b15`/117-byte EX35 layout, sensor offset 55,
+TE24 hot water, and standalone read requests. See [research](research.md) and
+[fixture provenance](../tests/data/README.md). Earlier electrical assumptions and
+synthetic-only statements above describe the prior reference audit. No additional
+upstream source code was copied for the captured layout or polling implementation.
+The correct vendor reference is the [NPort 5100A series QIG v3.5](https://moxa.com/getmedia/b43d0252-add7-4bf4-987b-0f6ad8811de2/moxa-nport-5100a-series-qig-v3.5.pdf),
+not the P5150A guide. Moxa pinout/settings are documented facts; the unusual
+adapter wiring is installation evidence, not a vendor recommendation.

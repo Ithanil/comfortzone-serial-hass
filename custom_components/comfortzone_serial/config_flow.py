@@ -1,4 +1,4 @@
-"""Local receiver configuration. Passive setup cannot verify pump connectivity."""
+"""Local acquisition configuration; forms never probe or configure the pump."""
 
 from __future__ import annotations
 
@@ -17,9 +17,13 @@ from homeassistant.helpers import selector
 from .const import (
     CONF_BIND_HOST,
     CONF_BIND_PORT,
+    CONF_DESTINATION_PORT,
     CONF_GAP_TIMEOUT,
     CONF_PARTIAL_TIMEOUT,
+    CONF_POLL_INTERVAL,
+    CONF_POLLING_ENABLED,
     CONF_PROFILE,
+    CONF_PUMP_ADDRESS,
     CONF_SOURCE_IP,
     CONF_SOURCE_PORT,
     CONF_STALE_TIMEOUT,
@@ -69,6 +73,14 @@ def _options_schema() -> vol.Schema:
             vol.Required(CONF_GAP_TIMEOUT, default=5.0): vol.All(
                 vol.Coerce(float), vol.Range(min=0.01, max=3600)
             ),
+            vol.Optional(CONF_POLLING_ENABLED, default=False): bool,
+            vol.Optional(CONF_POLL_INTERVAL, default=30.0): vol.All(
+                vol.Coerce(float), vol.Range(min=15, max=3600)
+            ),
+            vol.Optional(CONF_DESTINATION_PORT, default=4001): vol.All(
+                vol.Coerce(int), vol.Range(min=1, max=65535)
+            ),
+            vol.Optional(CONF_PUMP_ADDRESS, default="656fde02"): str,
         }
     )
 
@@ -148,7 +160,7 @@ class ComfortZoneConfigFlow(ConfigFlow, domain=DOMAIN):
 
 
 class ComfortZoneOptionsFlow(OptionsFlowWithReload):
-    """Change provisional decoding and silence/partial-frame limits."""
+    """Select a layout, optional read polling and freshness limits."""
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None

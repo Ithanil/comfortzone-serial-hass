@@ -9,9 +9,13 @@ from typing import Any
 from .const import (
     CONF_BIND_HOST,
     CONF_BIND_PORT,
+    CONF_DESTINATION_PORT,
     CONF_GAP_TIMEOUT,
     CONF_PARTIAL_TIMEOUT,
+    CONF_POLL_INTERVAL,
+    CONF_POLLING_ENABLED,
     CONF_PROFILE,
+    CONF_PUMP_ADDRESS,
     CONF_SOURCE_IP,
     CONF_SOURCE_PORT,
     CONF_STALE_TIMEOUT,
@@ -19,6 +23,7 @@ from .const import (
     OPTION_DEFAULTS,
 )
 from .telemetry.decoder import DecoderProfile
+from .telemetry.polling import RESPONSE_TIMEOUT, PollingSettings
 from .telemetry.stream import finite_seconds
 from .telemetry.udp import NetworkSettings
 
@@ -43,6 +48,7 @@ class DecoderSettings:
     stale_timeout: float
     partial_timeout: float
     gap_timeout: float
+    polling: PollingSettings | None
 
     @classmethod
     def from_options(cls, options: Mapping[str, Any]) -> DecoderSettings:
@@ -56,4 +62,20 @@ class DecoderSettings:
             raise ValueError("Partial timeout must be between 0.01 and 60 seconds")
         if not partial <= gap <= 3600:
             raise ValueError("Gap timeout must be between partial timeout and 3600")
-        return cls(DecoderProfile(values[CONF_PROFILE]), stale, partial, gap)
+        profile = DecoderProfile(values[CONF_PROFILE])
+        enabled = values[CONF_POLLING_ENABLED]
+        if type(enabled) is not bool:
+            raise ValueError("Polling enabled must be a boolean")
+        polling = PollingSettings(
+            interval=values[CONF_POLL_INTERVAL],
+            destination_port=values[CONF_DESTINATION_PORT],
+            address=values[CONF_PUMP_ADDRESS],
+        )
+        if enabled:
+            if profile is not DecoderProfile.EX35_0B15:
+                raise ValueError("Polling requires the EX35 0b15 profile")
+            if stale <= polling.interval:
+                raise ValueError("Freshness limit must exceed the polling interval")
+            if partial >= RESPONSE_TIMEOUT:
+                raise ValueError("Incomplete frame timeout must be below 10 seconds")
+        return cls(profile, stale, partial, gap, polling if enabled else None)

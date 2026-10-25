@@ -10,7 +10,7 @@ from homeassistant.config_entries import SOURCE_RECONFIGURE, SOURCE_USER
 from homeassistant.data_entry_flow import FlowResultType
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.comfortzone_serial.const import DOMAIN
+from custom_components.comfortzone_serial.const import DOMAIN, OPTION_DEFAULTS
 
 pytestmark = pytest.mark.asyncio
 NETWORK = {
@@ -113,7 +113,7 @@ async def test_options_validate_related_timeouts_and_reload(hass):
         await hass.async_block_till_done()
         reload.assert_called_once_with(entry.entry_id)
     assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert entry.options == options
+    assert entry.options == OPTION_DEFAULTS | options
 
 
 async def test_broken_entry_does_not_prevent_valid_configuration(hass):

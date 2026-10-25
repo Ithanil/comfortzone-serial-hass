@@ -2,135 +2,101 @@
 
 ![ComfortZone Serial icon](custom_components/comfortzone_serial/brand/icon.png)
 
-An MIT-licensed, receive-only Home Assistant integration in development for a
-ComfortZone EX35 connected through a Moxa NPort P5150A. Home Assistant owns
-measurement storage, history and visualization.
+Local, read-only Home Assistant temperatures from a ComfortZone EX35 through a
+**Moxa NPort 5150A**, without Loggamera or its cloud. The pump requires read
+requests; this integration can send the single captured temperature request over
+UDP and decode its replies. There are no register writes or heating controls.
 
-**Status, 2026-10-22: initial implementation prepared as ComfortZone Serial.**
-Receive-only UDP, framing/CRC, provisional decoding, capture/replay, Home Assistant
-configuration, sensors and lifecycle handling are implemented. HACS metadata,
-original brand artwork and standalone CI workflows are included. Manual evaluation
-targets **Home Assistant 2026.10.2 or newer**, with runtime tests on 2026.10.2.
-See the [Home Assistant setup guide](docs/home-assistant.md),
-[distribution guide](docs/distribution.md) and [review record](docs/implementation.md).
+**Status, 2026-10-25:** standalone request/reply operation was demonstrated
+repeatedly with Loggamera physically unplugged, using **RS-422 / 19200 / 8N1**
+and the wiring below. Captured traffic validates the EX35 `0b15` profile.
+Outdoor, indoor and hot-water readings match the pump display. The actual HA
+installation and extended polling operation remain to be checked by the owner;
+automated HA tests use fake transports and recorded replies.
 
-The standalone repository is
+## Installation and setup
+
+Use [the HA guide](docs/home-assistant.md) for manual installation or HACS custom
+repository setup. The standalone repository is
 [Ithanil/comfortzone-serial-hass](https://github.com/Ithanil/comfortzone-serial-hass),
-with integration domain `comfortzone_serial`. Follow the manual installation guide
-for evaluation. HACS installation requires the repository to be public and the
-distribution checks to pass. Official HACS/hassfest checks and a deployed
-installation remain unverified; version `0.1.0` is unreleased.
+domain `comfortzone_serial`. Minimum HA version: **2026.10.2**. Version `0.1.0`
+remains unreleased; local tests do not constitute official HACS/hassfest or
+installation validation.
 
-**Follow-up, 2026-10-22:** TCP acquisition is planned after the current
-documentation checkpoint and conversation compaction. It is not implemented;
-runtime and capture/replay remain UDP-only. See the
-[next-package handoff](docs/implementation.md#next-package-tcp-acquisition-planned-not-started).
+1. Configure the Moxa with the proven wiring/settings below and unplug Loggamera.
+2. Direct Moxa UDP to the HA host's reachable IP and port 4001; permit inbound UDP.
+3. Add **ComfortZone Serial**, entering the Moxa IP and HA listening port.
+4. Under **Configure**, select **EX35 temperatures — captured 0b15 layout** and
+   enable **Send temperature read requests**. Keep the default 30-second interval,
+   120-second freshness limit, and Moxa request port 4001 initially.
 
-No live serial data has been obtained. Owner-reported DC voltages at the powered
-Loggamera socket now make **RS-232 the leading hypothesis; its pinout remains
-unconfirmed**, superseding the earlier provisional two-wire RS-485 plan. See the
-[hardware assumptions and readings](docs/diagnostics.md#before-a-real-capture).
-Cable signals, 19200/8N1, controller layout and continued traffic with Loggamera
-absent all still need validation on the installation. Tests use synthetic frames
-exclusively. Neither passing them nor selecting a profile establishes hardware
-compatibility.
-The owner has ordered connector parts to carry only selected data/ground
-signals, replacing a cancelled adapter with extra control connections. Assembly
-and continuity checks are pending; the [diagnostic guide](docs/diagnostics.md#before-a-real-capture)
-distinguishes three-wire software receive-only operation from omitting the
-Moxa transmitter wire entirely.
+Existing entries and new setup remain passive until polling is explicitly enabled.
+The observation profile creates no sensors. The legacy RX50 profile remains
+available for passive research; it is not the observed EX35 layout.
 
-## Current implementation
+## Proven wiring
 
-The runtime foundation lives in `custom_components/comfortzone_serial/telemetry/`.
-It has no Home Assistant or third-party dependency:
+“Pump” means the original installed cable's DB9, before any crossover. Use numbered
+contacts; do not infer orientation from a connector's gender or wire colors.
 
-- A stream buffer bounded to 255 bytes reassembles split/coalesced frames and
-  checks their length and CRC-8/MAXIM-DOW checksum.
-- Incomplete candidates expire after a configurable interval measured from their
-  first byte. Expiry can recover complete frames behind a corrupt length even
-  when no more traffic arrives; callers must run the expiry timer.
-- Frames retain exact bytes. Decoding defaults to `observe_only`, which yields no
-  measurements. Explicit profile `czbridge_rx50_temperatures_v1` decodes only the
-  documented response command, register and exact payload length.
-- UDP source filtering, per-sender buffers, bounded diagnostics and expiry during
-  silence preserve original receive times and isolate sessions. Socket and timer
-  resources close cleanly on shutdown and failure.
-- Eight signed temperature values have reference names. There are no inferred
-  hot-water, power, alarm, setpoint or cloud-to-bus mappings.
+| Moxa contact, in RS-422 mode | Pump contact |
+| --- | --- |
+| 1 TX− | 2 |
+| 2 TX+ | Unconnected |
+| 3 RX+ | 5, via local jumper to Moxa 5 |
+| 4 RX− | 3 |
+| 5 GND | 5 |
 
-Read the [protocol contract](docs/protocol.md), including CRC ambiguity and timing
-limitations, and the [reference and licensing audit](docs/references.md).
+Keep the **Moxa 3–5 jumper**: leaving RX+ floating stopped reception. Leave other
+contacts unused. Do not ground TX+ or select RS-232/two-wire RS-485 with this
+wiring. Pin 3 would become an active output. The pump's native electrical standard
+is not established; this ground-referenced use of Moxa RS-422 is empirically proven
+on the tested installation, not a general ComfortZone cable specification.
 
-## Diagnostic capture and replay
+Set **19200, 8N1, all flow control off, FIFO enabled**, both bias jumpers open
+(150 kΩ default), no added termination. Use UDP, Moxa local listen port 4001,
+packing length 0, delimiters disabled, Force Transmit **20 ms**. The actual unit
+is **5150A**, not P5150A; its two-jumper arrangement and pinout are in the
+[5100A quick guide](https://moxa.com/getmedia/b43d0252-add7-4bf4-987b-0f6ad8811de2/moxa-nport-5100a-series-qig-v3.5.pdf),
+pages 4/6. The [research summary](docs/research.md) records the unsuccessful
+RS-232 tests and how the working setup was found.
 
-The [diagnostic guide](docs/diagnostics.md) documents network settings, bounded
-recording, metadata, replay format and failure handling. Run from this directory:
+## Measurements and behavior
+
+The EX35 profile checks command, register, payload length and address checksums.
+Three display-confirmed temperature entities are enabled by default: outdoor,
+indoor and hot water. Six reference-mapped entities are disabled by default and
+can be enabled individually: flow water, return water, hot gas, exchanger outlet,
+evaporator inlet and exhaust air. The observed unused-channel marker −990 is
+unavailable, not −99 °C. Unknown fields and general fault codes remain undecoded.
+
+Replies are reassembled across UDP datagrams: **104 + 35 bytes is one complete
+139-byte reply**. CRC failures, unrelated frames, timeouts and stale readings do
+not become fresh measurements. Polling allows one request at a time, waits up to
+10 seconds, and retries only at the next regular interval. The default 30 seconds
+is an engineering starting point, not a cadence measured from timestamp-free logs.
+
+HA owns measurement storage, history and visualization. There is no cloud call,
+MQTT dependency, database or separate collector service. TCP is deferred because
+UDP already supports the proven request/reply path. Diagnostic capture is optional
+and passive; [replay](docs/diagnostics.md) is offline and never transmits.
+
+## Development
+
+Runtime, tests, fixtures, tools and docs are self-contained in this repository.
+The original captures and detailed hardware history live in the separate
+[investigation repository](https://github.com/Ithanil/re_loggamera).
+See [protocol](docs/protocol.md), [fixture provenance](tests/data/README.md),
+[reference licenses](docs/references.md) and [distribution](docs/distribution.md).
 
 ```sh
+python3 -m pytest -q --ignore=tests/ha
 python3 -m tools.capture --help
 python3 -m tools.replay --help
 ```
 
-Capture requires the actual Moxa source IPv4 address and saves raw datagrams before
-any decoding. Replay is offline, defaults to observation only, and cannot publish
-live measurements. Neither tool configures or sends data to the Moxa.
-
-## Run the offline tests
-
-From this directory, with Python 3.13 or newer and pytest installed:
-
-```sh
-python3 -m pytest -q --ignore=tests/ha
-```
-
-For a separate development environment:
-
-```sh
-python3 -m venv .venv
-.venv/bin/python -m pip install -r requirements-test.txt
-.venv/bin/python -m pytest -q --ignore=tests/ha
-```
-
-The tests cover every split point of the temperature frame, coalesced frames,
-frame-length limits, malformed lengths, corrupted checksums, incomplete traffic,
-expiry during silence/trickle traffic, clock resets, bounded noise processing,
-unknown commands/registers/layouts and signed temperature decoding. The fixture
-builder uses a separate bit-order CRC implementation and the published CRC check
-vector. No fixtures were copied from upstream.
-
-Acquisition tests cover source/session isolation, recording limits, cancellation,
-write failures, malformed files and replay equivalence. One test sends synthetic
-UDP only through localhost to check actual reception, no replies and socket reuse
-after closure. Tests need permission to create loopback sockets and to wake the
-asyncio event loop from writer threads. No test contacts a heat pump or LAN host.
-The protocol/tools suite contains **275 tests**. The separate Home Assistant suite
-currently contains **24 tests** against HA 2026.10.2, covering config/options flows,
-sensor metadata and freshness, reloads, diagnostics and lifecycle failures. See the
-[HA testing commands](docs/home-assistant.md#development-verification) for its pinned
-dependencies and separate pytest configuration. All measurement fixtures are synthetic;
-these tests do not validate a Moxa connection or EX35 layout.
-Both suites passed from an independent standalone copy of this directory: **299
-tests total**, rechecked for package 4 on Python 3.14.7. Ruff, compilation,
-metadata/translation/workflow parsing, asset integrity, license notices and the
-receive-only code audit also passed. GitHub workflows have not run here; local
-checks do not constitute official HACS/hassfest validation or hardware validation.
-
-## Repository boundary
-
-This directory is the standalone repository root. Runtime, tests, documentation
-and HACS metadata must remain self-contained here. The protocol package uses no
-parent-repository imports, scripts or data. The separate
-[investigation repository](https://github.com/Ithanil/re_loggamera) holds hardware
-reports and vendor manuals and uses `integration/` as this repository's checkout
-location.
-
-Raw diagnostic recording/replay is opt-in development tooling, independent
-of measurement history. No database, MQTT service or separate telemetry backend
-is required by the integration.
-
-## License
-
-New code is licensed under [MIT](LICENSE). The upstream projects are references,
-not bundled dependencies. Their licenses and the exact inspected commits are
-recorded in [docs/references.md](docs/references.md).
+Use Python 3.13+ for protocol/tools tests; the pinned HA harness requires Python
+3.14. Full commands are in the [HA guide](docs/home-assistant.md#development-verification).
+The [validation checkpoint](docs/validation.md) records 463 passing integration
+tests. Tests use synthetic and captured fixtures, fake transports and localhost only.
+They never contact the live Moxa/pump. New code is [MIT licensed](LICENSE).

@@ -1,11 +1,13 @@
 {
   "domain": "comfortzone_serial",
   "name": "ComfortZone Serial",
-  "codeowners": ["@Ithanil"],
+  "codeowners": [
+    "@Ithanil"
+  ],
   "config_flow": true,
   "documentation": "https://github.com/Ithanil/comfortzone-serial-hass",
   "integration_type": "device",
-  "iot_class": "local_push",
+  "iot_class": "local_polling",
   "issue_tracker": "https://github.com/Ithanil/comfortzone-serial-hass/issues",
   "requirements": [],
   "version": "0.1.0"

@@ -7,7 +7,7 @@ from enum import StrEnum
 from ipaddress import IPv4Address
 from math import isfinite
 
-from .decoder import DecodeReason, DecodeResult, DecoderProfile, decode_frame
+from .decoder import DECODED_REASONS, DecodeResult, DecoderProfile, decode_frame
 from .framing import FrameBuffer, FramingStats, ReceivedFrame
 
 MAX_DATAGRAM_BYTES = 65507
@@ -267,7 +267,7 @@ class TelemetryPipeline:
                 result, self.origin, self.session_id, endpoint, received_at,
                 packet.received_at, packet.first_received_at, index,
             )
-            if result.reason is DecodeReason.DECODED:
+            if result.reason in DECODED_REASONS:
                 self.stats.decoded_frames += 1
             else:
                 self.stats.unknown_frames += 1

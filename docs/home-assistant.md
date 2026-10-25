@@ -1,167 +1,136 @@
 # Home Assistant setup and behavior
 
-The initial Home Assistant runtime is tested against **Home
-Assistant 2026.10.2 on Python 3.14**; older versions are not supported by this
-initial version. HACS metadata and standalone workflows are included; see
-[distribution](distribution.md) for the current installation boundary.
-No real EX35 captures, installation or hardware compatibility have been validated.
+Supports **HA 2026.10.2 or newer**, tested with the pinned 2026.10.2 runtime on
+Python 3.14. The protocol and hardware path have been verified on the owner's
+EX35. The owner's deployed HA instance and extended polling remain to be tested.
 
-## Install manually for evaluation
+## Installation
 
-1. Copy this directory's `custom_components/comfortzone_serial/` into your Home
-   Assistant configuration directory as `custom_components/comfortzone_serial/`.
-   Include all files, the `LICENSE`, and the `telemetry/`, `translations/` and
-   `brand/` subdirectories.
-2. Restart Home Assistant. Under **Settings → Devices & services → Add integration**,
-   choose **ComfortZone Serial**.
-3. Enter the receiver settings below. Setup opens a local UDP socket; it does not
-   contact the Moxa, detect a controller, or wait for a pump response. A successful
-   setup only establishes that the local listener could start.
-4. Keep the default **Observation only** profile for initial traffic inspection.
-   Use the entry's **Download diagnostics** action to inspect bounded evidence.
-5. After reviewing captures, the entry's **Configure** action offers the explicit
-   **RX50 temperatures — provisional reference layout** option. This creates eight
-   sensor entities for comparison with pump readings. Selecting it does not validate
-   the layout; do not rely on these provisional readings for control automations.
+Copy the entire `custom_components/comfortzone_serial/` directory into the HA
+configuration's `custom_components/`, including `telemetry/`, translations, brand
+and license. Restart HA and add **ComfortZone Serial** under Devices & services.
+For HACS use `Ithanil/comfortzone-serial-hass` as a custom **Integration** repository
+once public and distribution checks pass; see [distribution](distribution.md).
 
-For HACS, use the standalone
-[comfortzone-serial-hass repository](https://github.com/Ithanil/comfortzone-serial-hass)
-as a custom repository of type **Integration** once it is public and its
-distribution checks pass. The investigation repository is not the HACS source.
-HACS installation and a deployed HA instance remain unverified.
+Configure the [documented RS-422 wiring](../README.md#proven-wiring) and unplug
+Loggamera. Moxa must target the actual reachable HA host IPv4 address and UDP port,
+not `0.0.0.0`. Allow that inbound UDP source/port through the host firewall and
+container networking. Moxa settings are not changed by this integration.
 
-To update a manual installation, disable the entry, replace its component directory
-with the new complete version and restart HA. Preserve the HA config entry to keep
-its entity identities. To remove it, delete its entry under **Devices & services**,
-then remove `custom_components/comfortzone_serial/` and restart HA. Deleting an entry
-does not ask this integration to erase Home Assistant's recorded history.
+Enter the Moxa source IPv4 address, local listening address/port, and optionally
+its source port. Initial setup opens a passive listener without probing the pump.
+Under **Configure** choose **EX35 temperatures — captured 0b15 layout** and enable
+**Send temperature read requests** for standalone operation. Selecting the profile
+alone remains passive, useful while observing existing traffic.
 
-## Network settings
-
-| Setting | Default | Meaning |
+| Network field | Default | Meaning |
 | --- | --- | --- |
-| Moxa source IPv4 address | Required | Numeric address of the expected UDP sender. Hostnames, IPv6, multicast and `0.0.0.0` are rejected. |
-| Local listening IPv4 address | `0.0.0.0` | Listen on all local IPv4 interfaces, or specify an address assigned to the HA host. This is not the Moxa address. |
-| Local UDP port | `4001` | Port on the HA host, from 1 to 65535. Match the Moxa's UDP destination port. |
-| Moxa source UDP port | `0` | `0` accepts any source port from the configured IP; otherwise accept only the specified port (1–65535). The sender port need not equal the destination port. |
+| Moxa source IPv4 | Required | Numeric unicast Moxa address; no DNS or IPv6 |
+| Local listening IPv4 | `0.0.0.0` | All local IPv4 interfaces, or an address assigned to HA |
+| Local UDP port | `4001` | Match the Moxa destination port |
+| Moxa source UDP port | `0` | Accept any port from that IP; set 4001 for the tested configuration |
 
-Configure the Moxa's UDP destination to the **actual reachable HA host address**,
-never the wildcard `0.0.0.0`. Permit inbound UDP through relevant firewalls; a
-container installation must expose the UDP port or use appropriate host networking.
-This integration does not configure the Moxa or send application data to it.
-IP/port filtering is not authentication; traffic must come from a trusted network.
+The Moxa's listen port for requests is a separate option from this source filter.
+Requests use the same bound socket as replies. **Reconfigure** changes the network
+settings and reloads, preserving entity IDs and options. Overlapping listeners
+and source filters between entries are rejected. Disable other listeners using
+the same host/port, including diagnostic capture or bench scripts.
 
-Use the entry menu's **Reconfigure** action to change network settings. A reload
-closes the old socket before starting a new session. Overlapping source filters
-and local bind addresses are rejected between ComfortZone entries, including
-disabled entries. A port occupied by another program fails at bind time; Home
-Assistant reports a setup retry. Disable the conflicting program or change the
-local port and Moxa destination together.
+## Decoder, polling and freshness
 
-To use the [raw capture command](diagnostics.md) on the same host and port, disable
-the HA entry first. It releases its socket. Re-enable the entry after recording.
-The optional capture command is development tooling and is not started by HA.
-
-RS-232 is now the leading hypothesis at the Loggamera socket, based on the
-owner's DC voltage readings; the interface, cable pinout, baud rate and traffic
-without Loggamera remain unverified. Confirm electrical compatibility before
-attaching the pump cable. Software reception does not electrically disable the
-Moxa's transmitter; see the [diagnostic guide's hardware assumptions](diagnostics.md#before-a-real-capture)
-and the reference audit.
-
-## Decoder and timing options
-
-**Configure** changes the following options and automatically reloads the entry:
-
-| Option | Default | Range and behavior |
+| Option | Default | Behavior |
 | --- | --- | --- |
-| Decoder profile | Observation only | No measurement entities are created initially; valid unknown/undecoded frames remain in diagnostics. The sole measurement profile is the provisional RX50 reference layout. |
-| Measurement freshness limit | 120 seconds | 5–3600 seconds. Age since receipt of the final byte of that measurement's source frame. Tune only after observing the actual traffic cadence. |
-| Incomplete frame timeout | 1 second | 0.01–60 seconds. Expire an incomplete candidate from its first byte, even during silence. |
-| Reset partial data after a source gap | 5 seconds | At least the incomplete-frame timeout, at most 3600 seconds. Discard pending fragments when traffic resumes after a gap. |
+| Decoder profile | Observation only | Select EX35 0b15 for this installation; legacy RX50 remains provisional |
+| Send temperature read requests | Off | Explicitly enables the captured `R` operation; requires EX35 profile |
+| Read interval | 30 s | 15–3600 s; no overlapping requests or immediate retry bursts |
+| Moxa UDP listen port for requests | 4001 | Destination port at configured Moxa IP, independent of HA's listening port |
+| Pump protocol address | `656fde02` | Four bytes as eight hex characters, observed in this installation's captures; not an IP address |
+| Measurement freshness limit | 120 s | 5–3600 s, must exceed polling interval when polling is enabled |
+| Incomplete frame timeout | 1 s | 0.01–60 s, below 10 s when polling; measured from first byte |
+| Source-gap reset | 5 s | At least incomplete timeout, at most 3600 s |
 
-The reference profile requires an exact command, register and payload length.
-It creates outdoor, flow water, return water, indoor, hot gas, exchanger outlet,
-evaporator inlet and exhaust air temperature sensors. Native units are °C, with
-temperature device class and measurement state class; HA may display converted
-units according to its settings. No other measurements, fault-value interpretation,
-setpoints or writable entities are inferred. See [protocol.md](protocol.md).
+Changing options reloads the entry. Existing entries stay passive on upgrade.
+The integration sends the first read after opening the socket, then every interval.
+It waits up to **10 seconds** for a CRC-valid reply from the selected pump address,
+with the expected `r` command/register/length. Incomplete responses are discarded
+on timeout and at the next read. Matching replies outside an outstanding request
+are ignored for entity updates; duplicates cannot refresh a completed request.
+There is no sequence ID, so a sufficiently delayed UDP response arriving during a
+later request cannot be distinguished perfectly. The network must be trusted.
 
-Each sensor starts **unavailable**. Only matching live observations from the current
-session update it. CRC failures and unrelated/unknown traffic cannot refresh its
-age. A monotonic timer marks each reading unavailable at its freshness limit even
-when traffic stops completely. Framing recovery keeps the original receive time;
-a recovered old frame does not become a new measurement. Wall-clock changes do
-not extend freshness. Replay never enters this HA publishing path.
+The fixed operation reads `010203040b15010400` for 117 payload bytes; there is no
+arbitrary command, write, setpoint or control service. Pump address may be changed
+only to an address established from captures for an installation with the same
+layout. See [protocol](protocol.md). HA `update_entity` reevaluates freshness;
+it does not add another poll or socket.
 
-Receive time is the collector's timestamp, not a pump-generated measurement time.
-Diagnostics expose that timestamp, age and provisional profile provenance. HA
-records the current state update; the integration does not backfill history or
-put raw frame bytes/timestamps in sensor attributes on every packet. HA owns
-measurement storage, history and visualization.
+## Entities and evidence
 
-Entity and device identifiers use the persistent HA entry ID, independent of IP
-addresses and source ports. The integration has no verified pump serial/MAC
-identity and does not claim to detect an EX35 controller revision. Reconfiguration,
-reload and profile changes retain entity registry identities. Deleting and creating
-a new entry creates new identities. Switching back to observation only stops all
-measurement publishing; existing registry entities remain unavailable. Switching
-back restores the same IDs, initially unavailable. No prior value is restored as fresh.
+The EX35 profile creates nine temperature entities, all with °C, temperature device
+class, measurement state class and one decimal display precision. Only **outdoor,
+indoor and hot water** are enabled by default: these match the pump display.
+Six reference-mapped entities are disabled by default and may be enabled in the
+entity registry: flow water, return water, hot gas, exchanger outlet, evaporator
+inlet and exhaust air. Their channel positions are supported by captures and
+reference implementations, but their individual labels lack display confirmation.
+
+All sensors start unavailable. A matching live frame updates measurements; old
+sessions, replay, unknown layouts and corrupt bytes cannot refresh them. A monotonic
+timer expires measurements at their freshness limit even during total silence.
+The observed −990 raw unused-channel marker immediately makes that sensor
+unavailable. Other sensor fault encodings are not established. Unknown channels
+and fields are not exposed. This integration provides no writable entities.
+
+Receive timestamps belong to the collector, not the pump's measurement clock.
+There is no history backfill. Home Assistant handles all history and visualization.
+IDs depend on persistent entry ID and measurement key, not network addresses.
+Reload/reconfigure and profile changes retain registry IDs. Switching to observation
+stops publishing; returning to a profile starts unavailable. Creating a new entry
+creates new IDs; no old value is restored as fresh.
 
 ## Lifecycle and diagnostics
 
-Disabling, unloading, removing or reloading the entry, failed setup, cancellation,
-and HA shutdown close the UDP socket and cancel owned timers. If platform unloading
-fails, the running receiver is retained so a later unload can be retried. An actual
-receiver error makes measurements unavailable immediately and schedules one reload
-after five seconds. If binding the replacement fails, HA's normal setup retry
-mechanism applies. Mere traffic silence expires measurements and keeps listening;
-it does not trigger repeated reloads or any requests to the pump.
+Unload, failed setup, reload and HA shutdown close the socket and cancel polling,
+response, framing and freshness timers. A transport error makes sensors unavailable
+and schedules one reload after five seconds. Bind failures use HA's normal retry.
+A missing response increments a timeout counter; polling continues on its regular
+schedule, and readings age out. Passive silence simply continues listening.
 
-Download diagnostics includes receiver/framing counters, current measurement ages,
-the most recent 64 frames, 64 framing events and four raw datagrams, plus bounded
-partial buffers for up to eight source ports. These are in-memory rings, not a
-durable recording; they reset on reload/restart. Unknown frames retain exact bytes
-and decoding reasons. Use raw capture for evidence that must survive a reload.
+Download diagnostics includes settings, poll/receiver/framing counters, measurement
+ages, the latest 64 frames, 64 events and four raw datagrams. Network addresses,
+session IDs and the structured pump address are redacted. Exact serial bytes remain
+for diagnosis and can contain opaque identifiers; review before sharing. These
+bounded memory rings reset on reload, and nothing is uploaded.
 
-Configured IP addresses, sender endpoints and session IDs are redacted from HA's
-diagnostic download. Opaque serial bytes remain exact and may contain identifiers
-that this decoder cannot recognize. Review a download before sharing it. No data
-is uploaded by the integration.
+For unavailable sensors, inspect requests sent, replies received, timeouts, accepted
+UDP datagrams and decoding reasons. A successful setup or transmit count alone does
+not prove a working serial link. For original evidence use the passive
+[capture tool](diagnostics.md), or inspect HA diagnostics while polling; two
+listeners cannot bind the same address/port. No live polling is performed by tests.
 
-If no sensors appear, check the selected profile. If sensors are unavailable,
-inspect received/accepted datagram counters, framing CRC counters, decoding reasons
-and measurement ages. Successful UDP reception alone does not prove valid wiring,
-serial settings or a compatible layout. Capture and compare against the pump display;
-do not change offsets merely to obtain plausible values.
+Update a manual installation by disabling the entry, replacing the complete
+component directory, and restarting HA. To remove it, delete the entry then the
+component directory. HA history is not erased by this integration.
 
 ## Development verification
 
-The protocol/tools suite needs Python 3.13+ and `requirements-test.txt`:
+Protocol/tools: Python 3.13+ and `requirements-test.txt`:
 
 ```sh
-python3 -m pytest -q --ignore=tests/ha
+PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python3 -m pytest -q --ignore=tests/ha
 ```
 
-The HA suite needs Python 3.14 and the pinned HA harness. From this directory:
+HA runtime: Python 3.14 and the pinned harness:
 
 ```sh
 python3.14 -m venv .venv
-.venv/bin/python -m pip install -r requirements-test-ha.txt
+.venv/bin/python -m pip install -r requirements-test-ha.txt -r requirements-lint.txt
 .venv/bin/python -m pytest -c tests/ha/pytest.ini tests/ha -q
-```
-
-To run the protocol/tools suite in that same environment, disable the HA plugin's
-global fixtures so plain asyncio and real loopback tests remain independent:
-
-```sh
 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 .venv/bin/python -m pytest -q --ignore=tests/ha
+.venv/bin/ruff check .
 ```
 
-The HA tests load the actual integration/platform, flow manager, state machine and
-entity/device registries from HA 2026.10.2. They inject synthetic datagrams into a
-fake receive-only transport and reject sends. They cover UI validation, options
-reload, initial/stale/unavailable states, original receipt times, replay/session
-guards, stable IDs, diagnostics and cleanup/failure cases. These are software tests,
-not a deployed-frontend test or hardware validation. The separate protocol/tools
-suite includes actual UDP over localhost only.
+Recorded fixtures exercise the exact request cycle, all replies, address/length
+checks, the observed 104+35 split and every split point. HA tests cover opt-in
+polling, options, three enabled/six disabled sensors, hot water, sentinels, stale
+states and cleanup. Fake transports and localhost replace all live devices.

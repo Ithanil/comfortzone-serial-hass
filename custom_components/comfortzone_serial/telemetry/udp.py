@@ -1,4 +1,4 @@
-"""Receive-only asyncio UDP, with no remote endpoint or application send path."""
+"""Asyncio UDP reception with optional, bounded EX35 temperature read polling."""
 
 import asyncio
 import socket
@@ -6,6 +6,13 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
+from .decoder import DecoderProfile
+from .polling import (
+    RESPONSE_TIMEOUT,
+    PollingSettings,
+    PollingStats,
+    temperature_request,
+)
 from .stream import Datagram, Observation, Origin, TelemetryPipeline, ipv4, port
 
 
@@ -101,6 +108,15 @@ class UDPReceiver(asyncio.DatagramProtocol):
         if self._closing:
             transport.close()
 
+    def send_temperature_read(self, settings: PollingSettings) -> None:
+        """Send only the captured read operation, through the bound receive socket."""
+        if not self.running:
+            raise OSError("UDP receiver is not running")
+        self._transport.sendto(
+            temperature_request(settings.address),
+            (self.settings.source_ip, settings.destination_port),
+        )
+
     def datagram_received(self, data: bytes, addr: tuple[str, int]) -> None:
         if self._closing:
             return
@@ -164,25 +180,41 @@ class TelemetryListener:
         pipeline: TelemetryPipeline,
         on_observations: Callable[[list[Observation]], None],
         on_error: Callable[[Exception], None],
+        *,
+        polling: PollingSettings | None = None,
     ) -> None:
         if pipeline.origin is not Origin.LIVE:
             raise ValueError("A live listener requires a live pipeline")
+        if polling is not None and pipeline.profile is not DecoderProfile.EX35_0B15:
+            raise ValueError("Polling requires the EX35 0b15 profile")
         self.pipeline = pipeline
         self.on_observations = on_observations
         self.on_error = on_error
         self.receiver = UDPReceiver(settings, self._datagram, self._error)
         self._timer: asyncio.TimerHandle | None = None
+        self.polling = polling
+        self.poll_stats = PollingStats()
+        self._poll_timer: asyncio.TimerHandle | None = None
+        self._response_timer: asyncio.TimerHandle | None = None
+        self._sent_at: float | None = None
 
     async def start(self) -> None:
         try:
             await self.receiver.start()
             if self.receiver.running:
                 self._schedule()
+                if self.polling is not None:
+                    self._poll_timer = asyncio.get_running_loop().call_soon(self._poll)
         except BaseException:
             self.close()
             raise
 
     def close(self) -> None:
+        for timer in (self._poll_timer, self._response_timer):
+            if timer is not None:
+                timer.cancel()
+        self._poll_timer = self._response_timer = None
+        self._sent_at = None
         if self._timer is not None:
             self._timer.cancel()
             self._timer = None
@@ -193,9 +225,52 @@ class TelemetryListener:
         await self.receiver.wait_closed()
 
     def _datagram(self, datagram: Datagram) -> None:
-        observations = self.pipeline.feed(datagram)
+        self._emit(self.pipeline.feed(datagram))
+
+    def _emit(self, observations: list[Observation]) -> None:
+        if self.polling is not None:
+            accepted = []
+            for observation in observations:
+                if (
+                    self._sent_at is not None
+                    and observation.first_stream_time >= self._sent_at
+                    and self.polling.matches(observation.result.frame)
+                ):
+                    accepted.append(observation)
+                    self.poll_stats.replies_received += 1
+                    self._sent_at = None
+                    if self._response_timer is not None:
+                        self._response_timer.cancel()
+                        self._response_timer = None
+                else:
+                    self.poll_stats.ignored_frames += 1
+            observations = accepted
         if observations:
             self.on_observations(observations)
+
+    def _poll(self) -> None:
+        self._poll_timer = None
+        if not self.receiver.running or self.polling is None:
+            return
+        try:
+            self.pipeline.reset(reason="read_request")
+            self._sent_at = self.receiver.elapsed
+            self.receiver.send_temperature_read(self.polling)
+            if not self.receiver.running:
+                return  # An asynchronous transport error may close synchronously.
+            self.poll_stats.requests_sent += 1
+            loop = asyncio.get_running_loop()
+            self._response_timer = loop.call_later(RESPONSE_TIMEOUT, self._timeout)
+            self._poll_timer = loop.call_later(self.polling.interval, self._poll)
+        except Exception as error:
+            self._error(error)
+
+    def _timeout(self) -> None:
+        self._response_timer = None
+        if self._sent_at is not None:
+            self.poll_stats.timeouts += 1
+        self._sent_at = None
+        self.pipeline.reset(reason="read_timeout")
 
     def _schedule(self) -> None:
         self._timer = asyncio.get_running_loop().call_later(
@@ -205,9 +280,7 @@ class TelemetryListener:
     def _expire(self) -> None:
         self._timer = None
         try:
-            observations = self.pipeline.expire(now=self.receiver.elapsed)
-            if observations:
-                self.on_observations(observations)
+            self._emit(self.pipeline.expire(now=self.receiver.elapsed))
             if self.receiver.running:
                 self._schedule()
         except Exception as error:

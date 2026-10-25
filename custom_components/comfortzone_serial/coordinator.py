@@ -1,4 +1,4 @@
-"""Push-only acquisition and per-measurement freshness for Home Assistant."""
+"""UDP acquisition, optional read polling and per-measurement freshness."""
 
 import asyncio
 import logging
@@ -14,7 +14,12 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 
 from .const import DOMAIN
 from .settings import DecoderSettings, network_settings
-from .telemetry.decoder import TEMPERATURE_KEYS, DecodeReason
+from .telemetry.decoder import (
+    DECODED_REASONS,
+    DISPLAY_CONFIRMED_KEYS,
+    DecoderProfile,
+    temperature_keys,
+)
 from .telemetry.stream import Observation, Origin, TelemetryPipeline
 from .telemetry.udp import TelemetryListener
 
@@ -53,7 +58,8 @@ class ComfortZoneCoordinator(DataUpdateCoordinator[dict[str, Measurement]]):
             gap_timeout=self.decoder.gap_timeout,
         )
         self.listener = TelemetryListener(
-            self.settings, self.pipeline, self._observations, self._receiver_error
+            self.settings, self.pipeline, self._observations, self._receiver_error,
+            polling=self.decoder.polling,
         )
         self.data = {}
         self.latest: dict[str, Measurement] = {}
@@ -65,7 +71,7 @@ class ComfortZoneCoordinator(DataUpdateCoordinator[dict[str, Measurement]]):
         self.receiver_error: str | None = None
 
     async def async_start(self) -> None:
-        """Bind only; absence of passive traffic is not a setup failure."""
+        """Bind and start configured acquisition; silence is not a setup failure."""
         self._remove_stop = self.hass.bus.async_listen_once(
             EVENT_HOMEASSISTANT_STOP, self._stop
         )
@@ -114,19 +120,23 @@ class ComfortZoneCoordinator(DataUpdateCoordinator[dict[str, Measurement]]):
                 observation.origin is not Origin.LIVE
                 or observation.session_id != self.pipeline.session_id
                 or observation.result.profile is not self.decoder.profile
-                or observation.result.reason is not DecodeReason.DECODED
+                or observation.result.reason not in DECODED_REASONS
                 or not self.settings.accepts(observation.source)
                 or not 0 <= observation.stream_time <= now
             ):
                 continue
             for temperature in observation.result.temperatures:
-                if temperature.key not in TEMPERATURE_KEYS:
+                if temperature.key not in temperature_keys(self.decoder.profile):
                     continue
                 previous = self.latest.get(temperature.key)
                 if previous is not None and (
                     observation.stream_time,
                     observation.record_index,
                 ) <= (previous.stream_time, previous.record_index):
+                    continue
+                if temperature.celsius is None:
+                    self.latest.pop(temperature.key, None)
+                    changed = True
                     continue
                 self.latest[temperature.key] = Measurement(
                     temperature.celsius,
@@ -181,7 +191,7 @@ class ComfortZoneCoordinator(DataUpdateCoordinator[dict[str, Measurement]]):
             self.hass.config_entries.async_schedule_reload(self.config_entry.entry_id)
 
     async def async_request_refresh(self) -> None:
-        """An HA update request only reevaluates age; it never polls the pump."""
+        """Reevaluate age; the single polling timer owns all serial requests."""
         self._publish_fresh()
 
     def diagnostics(self) -> dict:
@@ -193,7 +203,16 @@ class ComfortZoneCoordinator(DataUpdateCoordinator[dict[str, Measurement]]):
             "receiver_error_type": self.receiver_error,
             "receiver_stats": asdict(self.listener.receiver.stats),
             "decoder_settings": asdict(self.decoder),
-            "layout_validation": "provisional; no installation captures validated",
+            "polling_stats": asdict(self.listener.poll_stats),
+            "layout_validation": (
+                "captured EX35 0b15; outdoor/indoor/hot water display-confirmed"
+                if self.decoder.profile is DecoderProfile.EX35_0B15
+                else "provisional reference or observation only"
+            ),
+            "display_confirmed_keys": (
+                sorted(DISPLAY_CONFIRMED_KEYS)
+                if self.decoder.profile is DecoderProfile.EX35_0B15 else []
+            ),
             "measurements": {
                 key: {
                     "celsius": value.celsius,

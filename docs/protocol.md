@@ -1,14 +1,18 @@
-# Provisional protocol contract
+# Protocol contract
 
-These are reference facts, not observations from this EX35. Source revisions and
-licensing decisions are in [references.md](references.md). The runtime implements
-only the envelope and one explicitly selected temperature layout.
+The envelope is verified against the owner's EX35 captures. The explicit EX35
+`0b15` profile and captured read are described below; the legacy RX50 profile
+retains its provisional status. References/licensing: [references.md](references.md).
+Fixture provenance: [tests/data](../tests/data/README.md).
 
 ## Envelope
 
 | Bytes, zero based | Reference interpretation |
 | --- | --- |
-| 0–9 | Address/header fields, retained as opaque bytes |
+| 0–3 | Destination address |
+| 4 | CRC-8 of destination |
+| 5 | CRC-8 of bitwise-complemented destination |
+| 6–9 | Source address |
 | 10 | Total frame length including checksum, 22–255 |
 | 11 | Command; documented commands are `R`, `r`, `W`, `w` |
 | 12–20 | Nine-byte register identifier |
@@ -17,9 +21,10 @@ only the envelope and one explicitly selected temperature layout.
 
 CRC parameters are width 8, polynomial 0x31 (reflected 0x8C), initial value 0,
 reflected input/output and final XOR 0. The ASCII check vector `123456789` produces
-0xA1. No address CRC or fixed synchronization marker is enforced. The sources
-contain differing descriptions of some header fields; their exact raw bytes are
-safer diagnostic evidence than assigning unverified meaning to them.
+0xA1. The generic framer retains unknown address forms for diagnostics. The EX35
+decoder checks destination `ADDR` and its two address checksums; active polling
+also requires the configured pump source address. Observed pump address is
+`656fde02`; this is a protocol address, not a confirmed device identity.
 
 `Frame` copies and validates its input, so a decoder cannot be given a corrupt
 or later-mutated frame through this API. The parser accepts unknown commands and
@@ -36,8 +41,8 @@ length; the acquisition/replay layers must bound their inputs and retained outpu
 A valid complete frame at the current boundary takes precedence. Bad length/CRC
 candidates advance the boundary one byte. An incomplete candidate waits for up
 to `partial_timeout` seconds from its first byte, **not** from the most recent
-datagram. The default one second is an engineering starting point, not a verified
-EX35 timing. A caller must periodically call `expire()` during silence. Expiry
+datagram. The default one second is an engineering timeout, not a measured maximum
+EX35 inter-byte gap. A caller must periodically call `expire()` during silence. Expiry
 resumes scanning and can emit valid complete frames hidden behind a corrupt length.
 
 During recovery from discarded bytes, a CRC-valid unknown-command candidate may
@@ -66,7 +71,8 @@ and resets. Rejected candidates are not necessarily real corrupt frames.
 
 The acquisition pipeline now implements source/session isolation and periodic
 expiry. See [diagnostics.md](diagnostics.md) for its additional bounds, raw capture
-and offline replay. All timeouts remain engineering defaults awaiting captures.
+and offline replay. Timeouts remain configurable engineering defaults. Captures confirm that serial
+frames cross UDP boundaries.
 
 ## Profiles
 
@@ -102,3 +108,55 @@ Unknown command, register and payload length each have an explicit result reason
 Every result retains the exact source frame and selected profile. Unsupported
 profile names raise an error. Software layouts 1.60, 1.80, 2.21 and proposed 2.50
 are not claimed as implemented profiles and never silently select this one.
+
+## Captured EX35 0b15 profile
+
+`ex35_0b15_temperatures_v1` requires command `r`, register
+`010203040b15010400`, exactly **117 payload bytes / 139 total**, destination
+`ADDR` with address checksums `07 8a`, and valid frame CRC. It does not infer a
+firmware version or auto-select a profile from plausible values.
+
+| Payload offset | Channel | Key | Evidence for name |
+| --- | --- | --- | --- |
+| 55 | TE0 | `outdoor_temperature` | Display-confirmed |
+| 57 | TE1 | `flow_water_temperature` | Reference mapping |
+| 59 | TE2 | `return_water_temperature` | Reference mapping |
+| 61 | TE3 | `indoor_temperature` | Display-confirmed |
+| 63 | TE4 | `hot_gas_temperature` | Reference mapping |
+| 65 | TE5 | `exchanger_outlet_temperature` | Reference mapping |
+| 67 | TE6 | `evaporator_inlet_temperature` | Reference mapping |
+| 69 | TE7 | `exhaust_air_temperature` | Reference mapping |
+| 103 | TE24 | `hot_water_temperature` | Display-confirmed |
+
+All values are signed int16 little endian divided by 10. Raw **−990** (`22 fc`),
+observed in unused channels, is treated conservatively as unavailable in this
+profile. No comprehensive fault-code table or other field decoding is claimed.
+The six reference-mapped HA entities are disabled by default. Other channels and
+registers remain unknown; no plausibility-based substitutions or clamping occur.
+
+## Read polling
+
+The captured operation, reproduced exactly for the observed pump address, is:
+
+```text
+65 6f de 02 d3 5e 41 44 44 52 17 52 01 02 03 04 0b 15 01 04 00 75 73
+```
+
+`R` reads 117 bytes (`75`) from the temperature register. A configurable pump
+address changes only the destination and checksums. The client address stays
+`ADDR`. No arbitrary payload or write-command API exists. Only this read is
+implemented; the 46-read Loggamera cycle is retained as research evidence.
+
+Polling is explicitly enabled, requires the EX35 profile and sends through the
+same UDP socket that receives replies. Default interval 30 seconds (minimum 15),
+response timeout 10 seconds. One outstanding request; no immediate retransmits.
+The first matching response satisfies it. Unrelated addresses/registers, late
+responses outside a request, and subsequent duplicates cannot refresh entities.
+Partial buffers reset before every read and after timeout. UDP has no transaction
+ID here: a delayed reply during a later request cannot be perfectly distinguished.
+Capture timestamps are absent, so the interval is not inferred from Loggamera.
+
+The response fixtures include CRC `05` as one 139-byte datagram and CRC `ab`
+as 104+35 bytes. CRC and exact length apply to the reconstructed frame, never to
+individual UDP packet sizes. Loss/reordering can cause a failed read; freshness
+expiry and the next periodic read recover without fabricating measurements.

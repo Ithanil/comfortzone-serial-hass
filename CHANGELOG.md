@@ -2,20 +2,20 @@
 
 ## 0.1.0 — unreleased
 
-Initial receive-only implementation for local evaluation:
+- Captured EX35 `0b15` temperature profile: 117-byte payload, offset 55 and hot water.
+- Outdoor, indoor and hot-water sensors enabled by default for that profile; six
+  reference-mapped temperatures offered disabled by default.
+- Opt-in standalone UDP read polling, fixed captured operation, matching replies,
+  bounded response timeout, lifecycle cleanup and polling diagnostics.
+- Unused-channel marker suppression and per-measurement freshness/unavailability.
+- Verified 5150A RS-422 connector/settings, concise research history and real
+  request/reply fixtures, including split UDP delivery.
+- Existing passive observation and provisional RX50 modes retained without
+  automatically enabling transmission on upgrade.
+- UDP reassembly/CRC, offline recording/replay, HA configuration/reconfiguration,
+  stable entity IDs, HACS metadata, MIT licensing and standalone CI workflows.
 
-- Standalone `comfortzone-serial-hass` repository, display name **ComfortZone Serial**
-  and integration domain `comfortzone_serial`.
-- Configurable IPv4 UDP reception, sender filtering, bounded framing, CRC checks
-  and recovery from corrupt or incomplete traffic.
-- Observation-only default and an explicit provisional eight-temperature profile.
-- Home Assistant UI setup, options/reconfiguration, sensor metadata, freshness,
-  unavailable states, bounded diagnostics and lifecycle recovery.
-- Optional bounded raw diagnostic capture and offline replay commands.
-- Synthetic protocol and Home Assistant tests, MIT licensing, HACS metadata and
-  standalone repository workflows.
-
-Requires Home Assistant 2026.10.2 or newer. Tested with 2026.10.2; compatibility
-with later releases still needs their tests. No real EX35 or Moxa captures have
-been validated. Wiring, serial settings, controller layout and traffic without
-Loggamera remain unverified. No release has been published.
+Minimum HA 2026.10.2; automated runtime tests target that version. Bench polling
+works with Loggamera disconnected. Extended operation, the owner's HA deployment
+and official distribution validation remain separate from automated tests.
+No release has been published; TCP remains deferred.

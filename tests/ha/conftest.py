@@ -27,3 +27,20 @@ async def udp_endpoint(hass):
 
     with patch.object(asyncio.get_running_loop(), "create_datagram_endpoint", endpoint):
         yield transports
+
+
+@pytest.fixture
+async def polling_endpoint(hass):
+    from tests.test_polling import PollTransport
+
+    transports = []
+
+    async def endpoint(factory, **kwargs):
+        protocol = factory()
+        transport = PollTransport(protocol)
+        transports.append(transport)
+        protocol.connection_made(transport)
+        return transport, protocol
+
+    with patch.object(asyncio.get_running_loop(), "create_datagram_endpoint", endpoint):
+        yield transports

@@ -1,5 +1,12 @@
 # Implementation packages and review checkpoints
 
+> Historical implementation review through 2026-10-22. Superseded for current
+> hardware/protocol/scope by [research](research.md), [protocol](protocol.md) and
+> [HA setup](home-assistant.md). The actual unit is 5150A, standalone operation
+> uses RS-422 and read polling, and TCP is deferred. Test totals below describe
+> earlier snapshots, not the current suite.
+
+
 Updated 2026-10-19. At the owner's request, each package is reviewed and reported
 before proceeding to the next, leaving an opportunity for feedback.
 
