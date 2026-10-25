@@ -131,8 +131,10 @@ firmware version or auto-select a profile from plausible values.
 All values are signed int16 little endian divided by 10. Raw **−990** (`22 fc`),
 observed in unused channels, is treated conservatively as unavailable in this
 profile. No comprehensive fault-code table or other field decoding is claimed.
-The six reference-mapped HA entities are disabled by default. Other channels and
-registers remain unknown; no plausibility-based substitutions or clamping occur.
+All nine HA entities are enabled by default and share the same presentation and
+availability rules. The evidence column above is documentation only and does not
+appear in runtime output. Other channels and registers remain unknown; no
+plausibility-based substitutions or clamping occur.
 
 ## Read polling
 

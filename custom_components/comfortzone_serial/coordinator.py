@@ -16,8 +16,6 @@ from .const import DOMAIN
 from .settings import DecoderSettings, network_settings
 from .telemetry.decoder import (
     DECODED_REASONS,
-    DISPLAY_CONFIRMED_KEYS,
-    DecoderProfile,
     temperature_keys,
 )
 from .telemetry.stream import Observation, Origin, TelemetryPipeline
@@ -204,15 +202,6 @@ class ComfortZoneCoordinator(DataUpdateCoordinator[dict[str, Measurement]]):
             "receiver_stats": asdict(self.listener.receiver.stats),
             "decoder_settings": asdict(self.decoder),
             "polling_stats": asdict(self.listener.poll_stats),
-            "layout_validation": (
-                "captured EX35 0b15; outdoor/indoor/hot water display-confirmed"
-                if self.decoder.profile is DecoderProfile.EX35_0B15
-                else "provisional reference or observation only"
-            ),
-            "display_confirmed_keys": (
-                sorted(DISPLAY_CONFIRMED_KEYS)
-                if self.decoder.profile is DecoderProfile.EX35_0B15 else []
-            ),
             "measurements": {
                 key: {
                     "celsius": value.celsius,

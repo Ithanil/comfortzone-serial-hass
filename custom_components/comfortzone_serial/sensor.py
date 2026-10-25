@@ -1,4 +1,4 @@
-"""Temperature entities for explicitly selected layouts and their evidence levels."""
+"""Temperature entities for explicitly selected layouts, all enabled by default."""
 
 from homeassistant.components.sensor import (
     SensorDeviceClass,
@@ -15,9 +15,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from .const import DOMAIN, NAME
 from .coordinator import ComfortZoneConfigEntry, ComfortZoneCoordinator
 from .telemetry.decoder import (
-    DISPLAY_CONFIRMED_KEYS,
     EX35_TEMPERATURE_KEYS,
-    DecoderProfile,
     temperature_keys,
 )
 
@@ -57,12 +55,6 @@ class ComfortZoneTemperature(CoordinatorEntity[ComfortZoneCoordinator], SensorEn
     ) -> None:
         super().__init__(coordinator, context=description.key)
         self.entity_description = description
-        # Secondary names are reference-based. Offer them without enabling
-        # unconfirmed measurements by default for the captured EX35 profile.
-        if coordinator.decoder.profile is DecoderProfile.EX35_0B15:
-            self._attr_entity_registry_enabled_default = (
-                description.key in DISPLAY_CONFIRMED_KEYS
-            )
         self._attr_unique_id = f"{coordinator.config_entry.entry_id}_{description.key}"
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, coordinator.config_entry.entry_id)},

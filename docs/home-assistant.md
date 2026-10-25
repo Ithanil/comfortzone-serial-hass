@@ -19,7 +19,7 @@ container networking. Moxa settings are not changed by this integration.
 
 Enter the Moxa source IPv4 address, local listening address/port, and optionally
 its source port. Initial setup opens a passive listener without probing the pump.
-Under **Configure** choose **EX35 temperatures — captured 0b15 layout** and enable
+Under **Configure** choose **EX35 temperatures — 0b15 layout** and enable
 **Send temperature read requests** for standalone operation. Selecting the profile
 alone remains passive, useful while observing existing traffic.
 
@@ -66,13 +66,20 @@ it does not add another poll or socket.
 
 ## Entities and evidence
 
-The EX35 profile creates nine temperature entities, all with °C, temperature device
-class, measurement state class and one decimal display precision. Only **outdoor,
-indoor and hot water** are enabled by default: these match the pump display.
-Six reference-mapped entities are disabled by default and may be enabled in the
-entity registry: flow water, return water, hot gas, exchanger outlet, evaporator
-inlet and exhaust air. Their channel positions are supported by captures and
-reference implementations, but their individual labels lack display confirmation.
+The EX35 profile creates nine temperature entities, all enabled by default with
+°C, temperature device class, measurement state class and one decimal display
+precision: outdoor, indoor, hot water, flow water, return water, hot gas,
+exchanger outlet, evaporator inlet and exhaust air. Evidence provenance has no
+effect on defaults, names, diagnostics or availability rules.
+
+On upgrade, previously integration-disabled temperature entities are enabled once,
+preserving their IDs and history. Entities explicitly disabled by the user stay
+disabled. The entry-wide preference to disable new entities is also respected.
+
+Outdoor, indoor and hot-water readings were checked against the pump display.
+The other six names come from captures and reference implementations and lack
+individual display confirmation. This distinction is retained here and in the
+[protocol notes](protocol.md) as research history only.
 
 All sensors start unavailable. A matching live frame updates measurements; old
 sessions, replay, unknown layouts and corrupt bytes cannot refresh them. A monotonic
@@ -132,5 +139,5 @@ PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 .venv/bin/python -m pytest -q --ignore=tests/ha
 
 Recorded fixtures exercise the exact request cycle, all replies, address/length
 checks, the observed 104+35 split and every split point. HA tests cover opt-in
-polling, options, three enabled/six disabled sensors, hot water, sentinels, stale
+polling, options, nine enabled sensors, upgrade defaults, hot water, sentinels, stale
 states and cleanup. Fake transports and localhost replace all live devices.

@@ -10,6 +10,38 @@ if TYPE_CHECKING:
     from .coordinator import ComfortZoneConfigEntry
 
 
+async def async_migrate_entry(
+    hass: HomeAssistant, entry: ComfortZoneConfigEntry
+) -> bool:
+    """Remove former integration-imposed temperature defaults once on upgrade."""
+    from homeassistant.helpers import entity_registry as er
+
+    from .const import DOMAIN
+    from .telemetry.decoder import EX35_TEMPERATURE_KEYS
+
+    if entry.version != 1:
+        return False
+    if entry.minor_version < 2:
+        # Respect explicit entity disables and the user's global preference to
+        # disable new entities. All temperature keys receive identical treatment.
+        if not entry.pref_disable_new_entities:
+            registry = er.async_get(hass)
+            for key in EX35_TEMPERATURE_KEYS:
+                entity_id = registry.async_get_entity_id(
+                    "sensor", DOMAIN, f"{entry.entry_id}_{key}"
+                )
+                if entity_id is None:
+                    continue
+                entity = registry.async_get(entity_id)
+                if (
+                    entity.config_entry_id == entry.entry_id
+                    and entity.disabled_by is er.RegistryEntryDisabler.INTEGRATION
+                ):
+                    registry.async_update_entity(entity_id, disabled_by=None)
+        hass.config_entries.async_update_entry(entry, minor_version=2)
+    return True
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: ComfortZoneConfigEntry) -> bool:
     # Lazy imports keep capture/replay and protocol tests independent of HA.
     from homeassistant.const import Platform

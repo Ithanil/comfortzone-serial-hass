@@ -89,6 +89,7 @@ class ComfortZoneConfigFlow(ConfigFlow, domain=DOMAIN):
     """Create a receiver entry; its entry ID is the persistent local identity."""
 
     VERSION = 1
+    MINOR_VERSION = 2
 
     @staticmethod
     @callback

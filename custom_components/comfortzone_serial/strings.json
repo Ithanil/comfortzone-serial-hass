@@ -36,7 +36,7 @@
     "step": {
       "init": {
         "title": "Temperatures and local read polling",
-        "description": "For standalone EX35 operation, select the EX35 0b15 profile and enable read polling with Loggamera disconnected. Polling requests temperatures only. Outdoor, indoor and hot-water sensors are enabled by default; six reference-mapped sensors can be enabled individually. Times are in seconds.",
+        "description": "For standalone EX35 operation, select the EX35 0b15 profile and enable read polling with Loggamera disconnected. Polling requests temperatures only. All nine temperature sensors are enabled by default. Times are in seconds.",
         "data": {
           "profile": "Decoder profile",
           "stale_timeout": "Measurement freshness limit",
@@ -57,8 +57,8 @@
     "profile": {
       "options": {
         "observe_only": "Observation only (default)",
-        "czbridge_rx50_temperatures_v1": "RX50 temperatures — provisional reference layout",
-        "ex35_0b15_temperatures_v1": "EX35 temperatures — captured 0b15 layout"
+        "czbridge_rx50_temperatures_v1": "RX50 temperatures — 0b0d layout",
+        "ex35_0b15_temperatures_v1": "EX35 temperatures — 0b15 layout"
       }
     }
   },

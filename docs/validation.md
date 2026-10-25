@@ -1,14 +1,15 @@
 # Validation checkpoint — 2026-10-25
 
 Local verification on Python 3.14.7, with the pinned Home Assistant 2026.10.2
-harness. All **463 integration tests pass**:
+harness. All **467 integration tests pass**:
 
 - **431 protocol/tools tests**: existing framing/recording cases plus the exact
   captured request cycle and replies, all 138 split points of a 139-byte response,
   EX35 layout guards, signed values, unavailable marker, read-only request
   generation, reply matching, timeouts/recovery and cancellation.
-- **32 HA runtime tests**: existing passive behavior plus EX35 options, opt-in
-  polling, three enabled/six disabled entities, hot water, sentinel/stale states,
+- **36 HA runtime tests**: existing passive behavior plus EX35 options, opt-in
+  polling, nine enabled entities, upgrade migration preserving explicit user
+  disables and entry-wide preferences, hot water, sentinel/stale states,
   diagnostics and cleanup.
 
 An actual localhost UDP test sends the captured read through the production
@@ -20,7 +21,8 @@ successfully outside it with their existing fixtures and localhost restrictions.
 Ruff, Python compilation, diff whitespace, local documentation links, JSON and
 translation consistency also pass. Captured fixture provenance is in
 [tests/data/README.md](../tests/data/README.md). The parent research repository has
-two additional passing integrity tests for the preserved logs and fixture extraction.
+**26 additional passing tests** for preserved-log integrity, fixture extraction
+and the CLI monitor, including uniform temperature labels and JSON output.
 
 Commands from the standalone repository:
 

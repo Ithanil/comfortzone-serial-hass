@@ -26,7 +26,7 @@ installation validation.
 1. Configure the Moxa with the proven wiring/settings below and unplug Loggamera.
 2. Direct Moxa UDP to the HA host's reachable IP and port 4001; permit inbound UDP.
 3. Add **ComfortZone Serial**, entering the Moxa IP and HA listening port.
-4. Under **Configure**, select **EX35 temperatures — captured 0b15 layout** and
+4. Under **Configure**, select **EX35 temperatures — 0b15 layout** and
    enable **Send temperature read requests**. Keep the default 30-second interval,
    120-second freshness limit, and Moxa request port 4001 initially.
 
@@ -64,10 +64,12 @@ RS-232 tests and how the working setup was found.
 ## Measurements and behavior
 
 The EX35 profile checks command, register, payload length and address checksums.
-Three display-confirmed temperature entities are enabled by default: outdoor,
-indoor and hot water. Six reference-mapped entities are disabled by default and
-can be enabled individually: flow water, return water, hot gas, exchanger outlet,
-evaporator inlet and exhaust air. The observed unused-channel marker −990 is
+All nine temperature entities are enabled by default: outdoor, indoor, hot water,
+flow water, return water, hot gas, exchanger outlet, evaporator inlet and exhaust
+air. Earlier integration-imposed disables are removed on upgrade; explicit user
+disables and the preference to disable new entities are preserved. The distinction
+between display checks and reference mappings remains in the protocol documentation
+only. The observed unused-channel marker −990 is
 unavailable, not −99 °C. Unknown fields and general fault codes remain undecoded.
 
 Replies are reassembled across UDP datagrams: **104 + 35 bytes is one complete
@@ -97,6 +99,6 @@ python3 -m tools.replay --help
 
 Use Python 3.13+ for protocol/tools tests; the pinned HA harness requires Python
 3.14. Full commands are in the [HA guide](docs/home-assistant.md#development-verification).
-The [validation checkpoint](docs/validation.md) records 463 passing integration
+The [validation checkpoint](docs/validation.md) records the passing integration
 tests. Tests use synthetic and captured fixtures, fake transports and localhost only.
 They never contact the live Moxa/pump. New code is [MIT licensed](LICENSE).

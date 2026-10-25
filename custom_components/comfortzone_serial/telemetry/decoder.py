@@ -15,7 +15,7 @@ class DecoderProfile(StrEnum):
 
 
 class DecodeReason(StrEnum):
-    DECODED = "decoded_provisional"
+    DECODED = "decoded"
     DECODED_EX35 = "decoded_ex35"
     OBSERVE_ONLY = "observe_only"
     UNKNOWN_COMMAND = "unknown_command"
@@ -40,13 +40,6 @@ TEMPERATURE_KEYS = (
 EX35_REGISTER = bytes.fromhex("010203040b15010400")
 EX35_TEMPERATURE_KEYS = (*TEMPERATURE_KEYS, "hot_water_temperature")
 EX35_CHANNELS = (*range(8), 24)
-DISPLAY_CONFIRMED_KEYS = frozenset(
-    {
-        "outdoor_temperature",
-        "indoor_temperature",
-        "hot_water_temperature",
-    }
-)
 DECODED_REASONS = frozenset({DecodeReason.DECODED, DecodeReason.DECODED_EX35})
 
 

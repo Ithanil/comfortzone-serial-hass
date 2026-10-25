@@ -3,8 +3,12 @@
 ## 0.1.0 — unreleased
 
 - Captured EX35 `0b15` temperature profile: 117-byte payload, offset 55 and hot water.
-- Outdoor, indoor and hot-water sensors enabled by default for that profile; six
-  reference-mapped temperatures offered disabled by default.
+- All nine EX35 temperature sensors enabled by default with uniform presentation;
+  mapping provenance retained in documentation only. A one-time upgrade enables
+  former integration-disabled temperatures while preserving user disables and the
+  entry-wide preference to disable new entities.
+- Removed confidence annotations from diagnostics and UI labels; the legacy
+  RX50 decoder's success reason is now `decoded` instead of `decoded_provisional`.
 - Opt-in standalone UDP read polling, fixed captured operation, matching replies,
   bounded response timeout, lifecycle cleanup and polling diagnostics.
 - Unused-channel marker suppression and per-measurement freshness/unavailability.
