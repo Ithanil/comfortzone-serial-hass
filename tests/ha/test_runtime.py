@@ -151,11 +151,15 @@ async def test_reload_identity_no_restoration_and_profile_switch(hass, udp_endpo
         .id
         == device.id
     )
-    hass.config_entries.async_update_entry(entry, options={"profile": "observe_only"})
+    hass.config_entries.async_update_entry(
+        entry, options=entry.options | {"profile": "observe_only"}
+    )
     assert await hass.config_entries.async_reload(entry.entry_id)
     await hass.async_block_till_done()
     assert all(hass.states.get(id).state == STATE_UNAVAILABLE for id in ids.values())
-    hass.config_entries.async_update_entry(entry, options={"profile": PROFILE.value})
+    hass.config_entries.async_update_entry(
+        entry, options=entry.options | {"profile": PROFILE.value}
+    )
     assert await hass.config_entries.async_reload(entry.entry_id)
     await hass.async_block_till_done()
     assert ids == entity_ids(hass, entry)
@@ -286,7 +290,7 @@ async def test_publish_guard_per_key_age_and_late_recovery(hass, udp_endpoint, f
     coordinator._observations([observation])  # old recovered response cannot overwrite
     await advance(hass, freezer, 1)
     assert set(coordinator.data) == {"outdoor_temperature"}
-    assert coordinator.data["outdoor_temperature"].celsius == -1.0
+    assert coordinator.data["outdoor_temperature"].value == -1.0
     await advance(hass, freezer, 5)
     assert coordinator.data == {}
     # A previously unseen old frame recovered now must never appear as fresh.

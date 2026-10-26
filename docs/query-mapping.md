@@ -1,13 +1,14 @@
-# EX35 monitor query mapping
+# EX35 read and query mapping
 
-Research checkpoint: 2026-10-26. These read groups are for the Moxa monitor;
-Home Assistant still uses the existing temperature profile and request only.
+Research checkpoint: 2026-10-26. The Moxa monitor selects query groups;
+Home Assistant selects the nine individual reads and exposes their mapped sensors.
+See the [HA guide](home-assistant.md) for defaults, entities and polling.
 All request registers and lengths below occur in the preserved Loggamera cycle.
 Only the temperature read has been exercised standalone on the installation.
 
-The monitor polls selected reads sequentially within each cycle, defaulting to
-30 seconds between cycle starts and a 250 ms pause after each compatible reply
-or timeout. Other pollers, including HA, can operate independently. Identical
+HA and the monitor poll selected reads sequentially within each cycle. HA defaults
+to 60 seconds between cycle starts, the monitor to 30 seconds; both pause 250 ms
+after each compatible reply or timeout. Other pollers can operate independently. Identical
 captured requests share the `ADDR` address without a transaction ID, so a matching
 reply cannot be attributed uniquely to the script. See [protocol](protocol.md).
 

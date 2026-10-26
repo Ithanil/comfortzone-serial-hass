@@ -21,7 +21,7 @@ NETWORK = {
 }
 
 
-async def test_user_default_observation_and_no_network_probe(hass):
+async def test_user_default_ex35_polling_and_no_form_network_probe(hass):
     with patch("asyncio.BaseEventLoop.create_datagram_endpoint") as endpoint:
         result = await hass.config_entries.flow.async_init(
             DOMAIN, context={"source": SOURCE_USER}
@@ -38,7 +38,8 @@ async def test_user_default_observation_and_no_network_probe(hass):
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert result["data"] == NETWORK
     assert result["result"].unique_id is None
-    assert result["result"].options == {}
+    assert result["result"].options == OPTION_DEFAULTS
+    assert result["result"].minor_version == 3
 
 
 @pytest.mark.parametrize(
@@ -97,6 +98,7 @@ async def test_options_validate_related_timeouts_and_reload(hass):
     assert result["type"] is FlowResultType.FORM
     options = {
         "profile": "czbridge_rx50_temperatures_v1",
+        "polling_enabled": False,
         "stale_timeout": 30,
         "partial_timeout": 10,
         "gap_timeout": 5,

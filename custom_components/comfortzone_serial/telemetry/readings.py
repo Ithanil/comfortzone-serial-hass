@@ -1,4 +1,4 @@
-"""Read-only EX35 field inspection, separate from Home Assistant profiles.
+"""Read-only EX35 field decoding for Home Assistant and investigation tools.
 
 Only captured layouts are accepted. A memory window must contain an entire
 field; no joining of different replies, value guessing or firmware detection.
@@ -9,7 +9,7 @@ from datetime import datetime
 
 from .decoder import EX35_CHANNELS, EX35_TEMPERATURE_KEYS
 from .framing import Frame, crc8_maxim
-from .queries import CAPTURED_LAYOUTS
+from .queries import CAPTURED_LAYOUTS, ReadDefinition
 
 
 @dataclass(frozen=True, slots=True)
@@ -101,6 +101,19 @@ _FIELDS = (
     _Field("compressor_state", "operation", 1, 0x0F, 44, encoding="unknown"),
     _Field("compressor_frequency", "operation", 1, 0x2E3, 59, "Hz", encoding="unknown"),
 )
+
+
+def reading_keys(read: ReadDefinition) -> frozenset[str]:
+    """Mapped fields available in an individual read, independent of values."""
+    address = int.from_bytes(read.register[7:9], "little")
+    return frozenset(
+        spec.key
+        for spec in _FIELDS
+        if spec.encoding != "unknown"
+        and spec.bank == read.register[6]
+        and address <= spec.address
+        and spec.address + spec.size <= address + read.payload_length
+    )
 
 
 def _value(spec: _Field, raw: bytes) -> tuple[int | float | str | None, str]:

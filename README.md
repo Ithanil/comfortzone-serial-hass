@@ -2,17 +2,18 @@
 
 ![ComfortZone Serial icon](custom_components/comfortzone_serial/brand/icon.png)
 
-Local, read-only Home Assistant temperatures from a ComfortZone EX35 through a
+Local, read-only Home Assistant telemetry from a ComfortZone EX35 through a
 **Moxa NPort 5150A**, without Loggamera or its cloud. The pump requires read
-requests; this integration can send the single captured temperature request over
-UDP and decode its replies. There are no register writes or heating controls.
+requests; this integration sends selected captured read operations over UDP and
+decodes temperatures, power, counters and settings. There are no register writes or heating controls.
 
-**Status, 2026-10-25:** standalone request/reply operation was demonstrated
+**Status, 2026-10-26:** standalone request/reply operation was demonstrated
 repeatedly with Loggamera physically unplugged, using **RS-422 / 19200 / 8N1**
 and the wiring below. Captured traffic validates the EX35 `0b15` profile.
-Outdoor, indoor and hot-water readings match the pump display. The actual HA
-installation and extended polling operation remain to be checked by the owner;
-automated HA tests use fake transports and recorded replies.
+Outdoor, indoor and hot-water readings match the pump display. The owner reports HA temperature polling
+already in use. The additional reads are verified against recorded captures;
+standalone live trials of those reads and extended operation remain owner checks.
+Automated HA tests use fake transports and recorded replies.
 
 ## Installation and setup
 
@@ -26,13 +27,35 @@ installation validation.
 1. Configure the Moxa with the proven wiring/settings below and unplug Loggamera.
 2. Direct Moxa UDP to the HA host's reachable IP and port 4001; permit inbound UDP.
 3. Add **ComfortZone Serial**, entering the Moxa IP and HA listening port.
-4. Under **Configure**, select **EX35 temperatures — 0b15 layout** and
-   enable **Send temperature read requests**. Keep the default 30-second interval,
-   120-second freshness limit, and Moxa request port 4001 initially.
+4. Keep **Send captured read requests** enabled for standalone EX35 operation.
+   Setup defaults to the EX35 profile and the five reads below. Under **Configure**,
+   select individual reads and adjust cycle timing or choose passive reception.
 
-Existing entries and new setup remain passive until polling is explicitly enabled.
-The observation profile creates no sensors. The legacy RX50 profile remains
-available for passive research; it is not the observed EX35 layout.
+| Individual read | Default | Entities |
+| --- | --- | --- |
+| `temperature` | On | Nine temperatures, pump local clock and weekday |
+| `power` | On | Compressor heat/electrical power, auxiliary and two total outputs |
+| `counters` | On | Three energy counters and compressor/total runtime |
+| `heating_settings` | On | Curve and calculated heating setting |
+| `hot_water_settings` | On | Setpoint, hysteresis, extra setpoint and duration |
+| `calibration` | Off | TE0–TE9 calibration adjustments |
+| `ui_identity` | Off | UI software version and hardware revision code |
+| `fan_settings` | Off | Normal, reduced and high fan settings |
+| `compressor` | Off | Diagnostic response status; payload remains undecoded |
+
+These are individual operations, independent of the monitor's query groups.
+Selected reads create their supported entities. **Pump local clock** and
+**Compressor response** are disabled by default and can be enabled manually;
+existing entity choices are preserved. The five initial reads register 27 entities
+(26 enabled); all nine register 43 (41 enabled). Settings are read-only sensors.
+The optional compressor response entity reports **Undecoded** on a valid reply,
+with exact bytes in downloadable diagnostics; no frequency/state is invented.
+Entity defaults do not change the selected reads or diagnostics.
+
+Existing entries retain their profile, polling enablement and explicit timing
+and network settings. EX35 entries gain the five default reads on upgrade; old
+passive/observation setups remain passive. Existing entity IDs and user disables
+are preserved. The legacy RX50 profile remains passive and temperature-only.
 
 ## Proven wiring
 
@@ -63,7 +86,8 @@ RS-232 tests and how the working setup was found.
 
 ## Measurements and behavior
 
-The EX35 profile checks command, register, payload length and address checksums.
+The EX35 profile checks command, register, payload length, pump address and
+address checksums.
 All nine temperature entities are enabled by default: outdoor, indoor, hot water,
 flow water, return water, hot gas, exchanger outlet, evaporator inlet and exhaust
 air. Earlier integration-imposed disables are removed on upgrade; explicit user
@@ -75,8 +99,22 @@ unavailable, not −99 °C. Unknown fields and general fault codes remain undeco
 Replies are reassembled across UDP datagrams: **104 + 35 bytes is one complete
 139-byte reply**. CRC failures, unrelated frames, timeouts and stale readings do
 not become fresh measurements. Polling allows one request at a time, waits up to
-10 seconds, and retries only at the next regular interval. The default 30 seconds
-is an engineering starting point, not a cadence measured from timestamp-free logs.
+10 seconds per read, then pauses 250 ms before advancing to the next. A new
+cycle starts every 60 seconds, or after the final pause if the cycle overruns;
+cycles never overlap or catch up in bursts. Freshness expires per measurement
+after 120 seconds, including during silence. Timing defaults are engineering
+starting points, not a cadence measured from timestamp-free logs.
+
+Valid selected replies from another poller can also update sensors. Matching a
+pending request advances only this integration's scheduler; it cannot establish
+which poller caused a reply. See the [HA guide](docs/home-assistant.md) for shared
+UDP forwarding and the reviewed technical settings.
+
+Energy/runtime counters retain their decoded units and ordinary HA history, but
+have no statistics state class until reset/rollover behavior is established.
+Energy counters are not yet suitable for the Energy dashboard. Power and measured
+temperatures support statistics. The pump clock is local text, without an invented
+timezone; calibration and hysteresis use temperature-difference units.
 
 HA owns measurement storage, history and visualization. There is no cloud call,
 MQTT dependency, database or separate collector service. TCP is deferred because
@@ -91,12 +129,10 @@ The original captures and detailed hardware history live in the separate
 See [protocol](docs/protocol.md), [fixture provenance](tests/data/README.md),
 [reference licenses](docs/references.md) and [distribution](docs/distribution.md).
 
-The shared telemetry package also provides [captured query groups and field
-inspection](docs/query-mapping.md) for the investigation repository's Moxa monitor:
-power, operation, counters, settings and misc. These are available to the monitor
-before HA entity integration. HA configuration, sensors and temperature-only
-polling remain unchanged. Unknown operation fields retain their raw data, and
-the extra requests still need standalone live trials by the owner.
+The shared telemetry package provides [captured reads and field decoding](docs/query-mapping.md)
+for HA and the investigation repository's Moxa monitor. The monitor retains its
+six query groups; HA selects the nine individual reads. Unknown regions remain
+in diagnostics. Alarm/event history and advanced controller tuning are excluded.
 
 ```sh
 python3 -m pytest -q --ignore=tests/ha

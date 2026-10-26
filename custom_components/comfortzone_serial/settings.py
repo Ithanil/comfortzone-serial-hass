@@ -16,6 +16,8 @@ from .const import (
     CONF_POLLING_ENABLED,
     CONF_PROFILE,
     CONF_PUMP_ADDRESS,
+    CONF_READ_QUERIES,
+    CONF_REQUEST_DELAY,
     CONF_SOURCE_IP,
     CONF_SOURCE_PORT,
     CONF_STALE_TIMEOUT,
@@ -24,6 +26,7 @@ from .const import (
 )
 from .telemetry.decoder import DecoderProfile
 from .telemetry.polling import RESPONSE_TIMEOUT, PollingSettings
+from .telemetry.queries import ReadDefinition, individual_reads
 from .telemetry.stream import finite_seconds
 from .telemetry.udp import NetworkSettings
 
@@ -49,6 +52,8 @@ class DecoderSettings:
     partial_timeout: float
     gap_timeout: float
     polling: PollingSettings | None
+    reads: tuple[ReadDefinition, ...]
+    address: str
 
     @classmethod
     def from_options(cls, options: Mapping[str, Any]) -> DecoderSettings:
@@ -56,8 +61,8 @@ class DecoderSettings:
         stale = finite_seconds(values[CONF_STALE_TIMEOUT])
         partial = finite_seconds(values[CONF_PARTIAL_TIMEOUT])
         gap = finite_seconds(values[CONF_GAP_TIMEOUT])
-        if not 5 <= stale <= 3600:
-            raise ValueError("Stale timeout must be between 5 and 3600 seconds")
+        if not 5 <= stale <= 86400:
+            raise ValueError("Stale timeout must be between 5 and 86400 seconds")
         if not 0.01 <= partial <= 60:
             raise ValueError("Partial timeout must be between 0.01 and 60 seconds")
         if not partial <= gap <= 3600:
@@ -66,16 +71,31 @@ class DecoderSettings:
         enabled = values[CONF_POLLING_ENABLED]
         if type(enabled) is not bool:
             raise ValueError("Polling enabled must be a boolean")
+        names = values[CONF_READ_QUERIES]
+        if not isinstance(names, (list, tuple)):
+            raise ValueError("Read selection must be a list")
+        reads = individual_reads(tuple(names))
         polling = PollingSettings(
             interval=values[CONF_POLL_INTERVAL],
             destination_port=values[CONF_DESTINATION_PORT],
             address=values[CONF_PUMP_ADDRESS],
+            read_names=tuple(read.name for read in reads),
+            cycle=True,
+            request_delay=values[CONF_REQUEST_DELAY],
         )
         if enabled:
             if profile is not DecoderProfile.EX35_0B15:
                 raise ValueError("Polling requires the EX35 0b15 profile")
-            if stale <= polling.interval:
-                raise ValueError("Freshness limit must exceed the polling interval")
+            if stale <= max(polling.interval, len(reads) * polling.request_delay):
+                raise ValueError("Freshness limit must exceed the cycle and its pauses")
             if partial >= RESPONSE_TIMEOUT:
                 raise ValueError("Incomplete frame timeout must be below 10 seconds")
-        return cls(profile, stale, partial, gap, polling if enabled else None)
+        return cls(
+            profile,
+            stale,
+            partial,
+            gap,
+            polling if enabled else None,
+            reads,
+            polling.address,
+        )

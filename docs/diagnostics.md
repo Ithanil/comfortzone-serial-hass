@@ -142,7 +142,7 @@ failure and cancellation release any acquired socket; `close()` and
 `TelemetryListener` owns a live `TelemetryPipeline`, receiver and expiry timer.
 It checks partials every `min(partial_timeout / 2, 0.25)` seconds during silence,
 cancels the timer on shutdown/error and clears partial streams. The HA coordinator manages reload after transport errors. With optional
-`PollingSettings`, the listener also owns the fixed read and response timers;
+`PollingSettings`, the listener also owns the cycle and response timers;
 without them it never transmits. The capture command uses the passive receiver.
 
 | Resource | Default / enforced bound |
@@ -153,6 +153,7 @@ without them it never transmits. The capture command uses the passive receiver.
 | Receipt metadata per source | 256 nonempty datagrams; no raw payload copies |
 | Recent validated frames and reset/expiry events | Separate rings of 64 each, configurable 1–256 |
 | Recent accepted raw datagrams | 4 |
+| HA latest selected-read responses | At most 9, including fields and unknown regions |
 | Capture writer queue | 64 datagrams plus the currently written record |
 | Capture header | 16384 encoded bytes |
 | Replay input line | 140000 bytes; rejected without reading an unbounded line |

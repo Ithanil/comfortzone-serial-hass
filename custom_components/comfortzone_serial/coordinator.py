@@ -16,8 +16,11 @@ from .const import DOMAIN
 from .settings import DecoderSettings, network_settings
 from .telemetry.decoder import (
     DECODED_REASONS,
+    DecoderProfile,
     temperature_keys,
 )
+from .telemetry.polling import pump_address
+from .telemetry.readings import decode_readings, reading_keys
 from .telemetry.stream import Observation, Origin, TelemetryPipeline
 from .telemetry.udp import TelemetryListener
 
@@ -27,7 +30,9 @@ RELOAD_DELAY = 5.0
 
 @dataclass(frozen=True, slots=True)
 class Measurement:
-    celsius: float
+    value: int | float | str | None
+    status: str
+    unit: str | None
     received_at: datetime
     stream_time: float
     record_index: int
@@ -56,11 +61,17 @@ class ComfortZoneCoordinator(DataUpdateCoordinator[dict[str, Measurement]]):
             gap_timeout=self.decoder.gap_timeout,
         )
         self.listener = TelemetryListener(
-            self.settings, self.pipeline, self._observations, self._receiver_error,
+            self.settings,
+            self.pipeline,
+            self._observations,
+            self._receiver_error,
             polling=self.decoder.polling,
+            receive_all=True,
         )
         self.data = {}
         self.latest: dict[str, Measurement] = {}
+        self.read_replies: dict[str, dict] = {}
+        self._reads = {read.register: read for read in self.decoder.reads}
         self._expiry: asyncio.TimerHandle | None = None
         self._reload: asyncio.TimerHandle | None = None
         self._remove_stop = None
@@ -118,26 +129,66 @@ class ComfortZoneCoordinator(DataUpdateCoordinator[dict[str, Measurement]]):
                 observation.origin is not Origin.LIVE
                 or observation.session_id != self.pipeline.session_id
                 or observation.result.profile is not self.decoder.profile
-                or observation.result.reason not in DECODED_REASONS
                 or not self.settings.accepts(observation.source)
                 or not 0 <= observation.stream_time <= now
             ):
                 continue
-            for temperature in observation.result.temperatures:
-                if temperature.key not in temperature_keys(self.decoder.profile):
+            frame = observation.result.frame
+            if self.decoder.profile is DecoderProfile.EX35_0B15:
+                read = self._reads.get(frame.register)
+                if (
+                    read is None
+                    or frame.raw[6:10] != pump_address(self.decoder.address)
+                    or len(frame.payload) != read.payload_length
+                ):
                     continue
-                previous = self.latest.get(temperature.key)
+                decoded = decode_readings(frame)
+                if decoded.reason not in ("decoded", "unmapped_payload"):
+                    continue
+                previous_reply = self.read_replies.get(read.name)
+                order = (observation.stream_time, observation.record_index)
+                if previous_reply and order <= previous_reply["order"]:
+                    continue
+                self.read_replies[read.name] = {
+                    "order": order,
+                    "received_at": observation.received_at.isoformat(),
+                    "raw_hex": frame.raw.hex(),
+                    "decode_reason": decoded.reason,
+                    **decoded.as_dict(),
+                }
+                keys = reading_keys(read)
+                values = [
+                    (field.key, field.value, field.status, field.unit)
+                    for field in decoded.fields
+                    if field.key in keys
+                ]
+                if read.name == "compressor":
+                    # Report reception without inventing a frequency or state.
+                    values.append(("compressor_response", "undecoded", "decoded", None))
+            elif observation.result.reason in DECODED_REASONS:
+                values = [
+                    (
+                        t.key,
+                        t.celsius,
+                        "unavailable" if t.celsius is None else "decoded",
+                        "°C",
+                    )
+                    for t in observation.result.temperatures
+                    if t.key in temperature_keys(self.decoder.profile)
+                ]
+            else:
+                continue
+            for key, value, status, unit in values:
+                previous = self.latest.get(key)
                 if previous is not None and (
                     observation.stream_time,
                     observation.record_index,
                 ) <= (previous.stream_time, previous.record_index):
                     continue
-                if temperature.celsius is None:
-                    self.latest.pop(temperature.key, None)
-                    changed = True
-                    continue
-                self.latest[temperature.key] = Measurement(
-                    temperature.celsius,
+                self.latest[key] = Measurement(
+                    value,
+                    status,
+                    unit,
                     observation.received_at,
                     observation.stream_time,
                     observation.record_index,
@@ -195,20 +246,35 @@ class ComfortZoneCoordinator(DataUpdateCoordinator[dict[str, Measurement]]):
     def diagnostics(self) -> dict:
         """Bounded evidence, separate from recorded sensor attributes."""
         now = self.listener.receiver.elapsed
+        decoder_settings = asdict(self.decoder)
+        decoder_settings["reads"] = [read.name for read in self.decoder.reads]
         return {
             "network_settings": asdict(self.settings),
             "receiver_running": self.listener.receiver.running,
             "receiver_error_type": self.receiver_error,
             "receiver_stats": asdict(self.listener.receiver.stats),
-            "decoder_settings": asdict(self.decoder),
+            "decoder_settings": decoder_settings,
+            "read_replies": {
+                name: {
+                    **{k: v for k, v in reply.items() if k != "order"},
+                    "age_seconds": max(0, now - reply["order"][0]),
+                }
+                for name, reply in self.read_replies.items()
+            },
             "polling_stats": asdict(self.listener.poll_stats),
             "measurements": {
                 key: {
-                    "celsius": value.celsius,
+                    "value": value.value,
+                    "status": value.status,
+                    "unit": value.unit,
                     "received_at": value.received_at.isoformat(),
                     "age_seconds": max(0, now - value.stream_time),
                     "record_index": value.record_index,
-                    "available": key in self.data and not self._closed,
+                    "available": (
+                        key in self.data
+                        and not self._closed
+                        and value.status != "unavailable"
+                    ),
                 }
                 for key, value in self.latest.items()
             },

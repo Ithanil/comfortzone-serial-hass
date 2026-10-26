@@ -1,4 +1,4 @@
-"""Captured EX35 read definitions for monitor research; no arbitrary commands.
+"""Captured EX35 read definitions; no arbitrary commands.
 
 Register/length pairs are facts from the owner's capture. Mapping provenance
 and unresolved fields are recorded in docs/query-mapping.md.
@@ -42,6 +42,31 @@ QUERY_GROUPS = MappingProxyType(
     }
 )
 ALLOWED_READS = frozenset(read for reads in QUERY_GROUPS.values() for read in reads)
+READS_BY_NAME = MappingProxyType(
+    {
+        read.name: read
+        for read in (
+            TEMPERATURE_READ,
+            POWER_READ,
+            COUNTERS_READ,
+            HEATING_READ,
+            HOT_WATER_READ,
+            CALIBRATION_READ,
+            IDENTITY_READ,
+            FAN_READ,
+            COMPRESSOR_READ,
+        )
+    }
+)
+
+
+def individual_reads(names: tuple[str, ...]) -> tuple[ReadDefinition, ...]:
+    """Resolve individual operations, preserving order and removing duplicates."""
+    if not isinstance(names, tuple) or not names:
+        raise ValueError("Select one or more individual reads")
+    if any(not isinstance(name, str) or name not in READS_BY_NAME for name in names):
+        raise ValueError("Unknown individual read")
+    return tuple(READS_BY_NAME[name] for name in dict.fromkeys(names))
 
 
 def query_reads(groups: tuple[str, ...]) -> tuple[ReadDefinition, ...]:

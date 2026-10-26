@@ -24,6 +24,8 @@ from .const import (
     CONF_POLLING_ENABLED,
     CONF_PROFILE,
     CONF_PUMP_ADDRESS,
+    CONF_READ_QUERIES,
+    CONF_REQUEST_DELAY,
     CONF_SOURCE_IP,
     CONF_SOURCE_PORT,
     CONF_STALE_TIMEOUT,
@@ -34,29 +36,36 @@ from .const import (
 )
 from .settings import DecoderSettings, network_settings
 from .telemetry.decoder import DecoderProfile
+from .telemetry.queries import READS_BY_NAME
 from .telemetry.udp import NetworkSettings
 
 
-def _network_schema() -> vol.Schema:
-    return vol.Schema(
-        {
-            vol.Required(CONF_SOURCE_IP): str,
-            vol.Required(CONF_BIND_HOST, default=NETWORK_DEFAULTS[CONF_BIND_HOST]): str,
-            vol.Required(CONF_BIND_PORT, default=4001): vol.All(
-                vol.Coerce(int), vol.Range(min=1, max=65535)
-            ),
-            vol.Required(CONF_SOURCE_PORT, default=0): vol.All(
-                vol.Coerce(int), vol.Range(min=0, max=65535)
-            ),
-        }
-    )
+def _network_schema(*, setup: bool = False) -> vol.Schema:
+    fields = {
+        vol.Required(CONF_SOURCE_IP): str,
+        vol.Required(CONF_BIND_HOST, default=NETWORK_DEFAULTS[CONF_BIND_HOST]): str,
+        vol.Required(CONF_BIND_PORT, default=NETWORK_DEFAULTS[CONF_BIND_PORT]): vol.All(
+            vol.Coerce(int), vol.Range(min=1, max=65535)
+        ),
+        vol.Required(
+            CONF_SOURCE_PORT, default=NETWORK_DEFAULTS[CONF_SOURCE_PORT]
+        ): vol.All(vol.Coerce(int), vol.Range(min=0, max=65535)),
+    }
+    if setup:
+        fields[
+            vol.Optional(
+                CONF_POLLING_ENABLED, default=OPTION_DEFAULTS[CONF_POLLING_ENABLED]
+            )
+        ] = bool
+    return vol.Schema(fields)
 
 
-def _options_schema() -> vol.Schema:
+def _options_schema(options: dict) -> vol.Schema:
+    values = OPTION_DEFAULTS | options
     return vol.Schema(
         {
             vol.Required(
-                CONF_PROFILE, default=OPTION_DEFAULTS[CONF_PROFILE]
+                CONF_PROFILE, default=values[CONF_PROFILE]
             ): selector.SelectSelector(
                 selector.SelectSelectorConfig(
                     options=[profile.value for profile in DecoderProfile],
@@ -64,23 +73,40 @@ def _options_schema() -> vol.Schema:
                     mode=selector.SelectSelectorMode.DROPDOWN,
                 )
             ),
-            vol.Required(CONF_STALE_TIMEOUT, default=120): vol.All(
-                vol.Coerce(float), vol.Range(min=5, max=3600)
+            vol.Required(
+                CONF_READ_QUERIES, default=values[CONF_READ_QUERIES]
+            ): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=list(READS_BY_NAME),
+                    multiple=True,
+                    translation_key="read_queries",
+                    mode=selector.SelectSelectorMode.LIST,
+                )
             ),
-            vol.Required(CONF_PARTIAL_TIMEOUT, default=1.0): vol.All(
-                vol.Coerce(float), vol.Range(min=0.01, max=60)
-            ),
-            vol.Required(CONF_GAP_TIMEOUT, default=5.0): vol.All(
+            vol.Required(
+                CONF_STALE_TIMEOUT, default=values[CONF_STALE_TIMEOUT]
+            ): vol.All(vol.Coerce(float), vol.Range(min=5, max=86400)),
+            vol.Required(
+                CONF_PARTIAL_TIMEOUT, default=values[CONF_PARTIAL_TIMEOUT]
+            ): vol.All(vol.Coerce(float), vol.Range(min=0.01, max=60)),
+            vol.Required(CONF_GAP_TIMEOUT, default=values[CONF_GAP_TIMEOUT]): vol.All(
                 vol.Coerce(float), vol.Range(min=0.01, max=3600)
             ),
-            vol.Optional(CONF_POLLING_ENABLED, default=False): bool,
-            vol.Optional(CONF_POLL_INTERVAL, default=30.0): vol.All(
-                vol.Coerce(float), vol.Range(min=15, max=3600)
+            vol.Optional(
+                CONF_POLLING_ENABLED, default=values[CONF_POLLING_ENABLED]
+            ): bool,
+            vol.Optional(
+                CONF_POLL_INTERVAL, default=values[CONF_POLL_INTERVAL]
+            ): vol.All(
+                vol.Coerce(float), vol.Range(min=0, min_included=False, max=3600)
             ),
-            vol.Optional(CONF_DESTINATION_PORT, default=4001): vol.All(
-                vol.Coerce(int), vol.Range(min=1, max=65535)
-            ),
-            vol.Optional(CONF_PUMP_ADDRESS, default="656fde02"): str,
+            vol.Optional(
+                CONF_REQUEST_DELAY, default=values[CONF_REQUEST_DELAY]
+            ): vol.All(vol.Coerce(float), vol.Range(min=0, max=3600)),
+            vol.Optional(
+                CONF_DESTINATION_PORT, default=values[CONF_DESTINATION_PORT]
+            ): vol.All(vol.Coerce(int), vol.Range(min=1, max=65535)),
+            vol.Optional(CONF_PUMP_ADDRESS, default=values[CONF_PUMP_ADDRESS]): str,
         }
     )
 
@@ -89,7 +115,7 @@ class ComfortZoneConfigFlow(ConfigFlow, domain=DOMAIN):
     """Create a receiver entry; its entry ID is the persistent local identity."""
 
     VERSION = 1
-    MINOR_VERSION = 2
+    MINOR_VERSION = 3
 
     @staticmethod
     @callback
@@ -149,19 +175,27 @@ class ComfortZoneConfigFlow(ConfigFlow, domain=DOMAIN):
                 else:
                     # No serial/MAC identity has been learned from passive traffic.
                     # Do not pretend the sender IP is an immutable device ID.
-                    return self.async_create_entry(title=NAME, data=user_input)
+                    data = dict(user_input)
+                    enabled = data.pop(
+                        CONF_POLLING_ENABLED, OPTION_DEFAULTS[CONF_POLLING_ENABLED]
+                    )
+                    return self.async_create_entry(
+                        title=NAME,
+                        data=data,
+                        options=OPTION_DEFAULTS | {CONF_POLLING_ENABLED: enabled},
+                    )
         defaults = user_input if user_input is not None else entry.data if entry else {}
         return self.async_show_form(
             step_id=step,
             data_schema=self.add_suggested_values_to_schema(
-                _network_schema(), defaults
+                _network_schema(setup=entry is None), defaults
             ),
             errors=errors,
         )
 
 
 class ComfortZoneOptionsFlow(OptionsFlowWithReload):
-    """Select a layout, optional read polling and freshness limits."""
+    """Select individual reads, cycle timing and receive/freshness limits."""
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
@@ -177,7 +211,7 @@ class ComfortZoneOptionsFlow(OptionsFlowWithReload):
         return self.async_show_form(
             step_id="init",
             data_schema=self.add_suggested_values_to_schema(
-                _options_schema(),
+                _options_schema(dict(self.config_entry.options)),
                 user_input if user_input is not None else self.config_entry.options,
             ),
             errors=errors,

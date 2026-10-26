@@ -268,7 +268,7 @@ def test_counter_unsigned_width_and_unknown_bytes_are_preserved():
         assert known | unknown == set(range(len(frame.payload)))
 
 
-def test_ha_profile_stays_temperature_only_and_history_stays_unknown():
+def test_legacy_temperature_decoder_api_and_excluded_history():
     for read in ALLOWED_READS - {TEMPERATURE_READ}:
         result = decode_frame(
             captured_frames()[read.register], profile=DecoderProfile.EX35_0B15

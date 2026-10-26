@@ -303,7 +303,7 @@ def test_cycle_polling_rejects_invalid_timing(kwargs):
         PollingSettings(cycle=True, **kwargs)
 
 
-def test_cycle_timing_is_independent_of_ha_request_interval():
+def test_cycle_timing_and_legacy_fixed_interval_defaults():
     settings = PollingSettings(cycle=True, interval=0.1, request_delay=0)
     assert settings.interval == 0.1 and settings.request_delay == 0
     assert not PollingSettings().cycle

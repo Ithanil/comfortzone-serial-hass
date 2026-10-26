@@ -190,6 +190,7 @@ class TelemetryListener:
         *,
         polling: PollingSettings | None = None,
         on_poll_progress: Callable[[], None] | None = None,
+        receive_all: bool = False,
     ) -> None:
         if pipeline.origin is not Origin.LIVE:
             raise ValueError("A live listener requires a live pipeline")
@@ -202,6 +203,9 @@ class TelemetryListener:
         self._timer: asyncio.TimerHandle | None = None
         self.polling = polling
         self.on_poll_progress = on_poll_progress
+        # HA may consume another poller's replies. Preserve its receive stream
+        # across our own sends/timeouts; matching only advances our scheduler.
+        self.receive_all = receive_all
         self.poll_stats = PollingStats()
         self._poll_timer: asyncio.TimerHandle | None = None
         self._response_timer: asyncio.TimerHandle | None = None
@@ -258,7 +262,8 @@ class TelemetryListener:
                     self._schedule_next_read()
                 else:
                     self.poll_stats.ignored_frames += 1
-            observations = accepted
+            if not self.receive_all:
+                observations = accepted
         if observations:
             self.on_observations(observations)
 
@@ -274,7 +279,8 @@ class TelemetryListener:
                 )
             return
         try:
-            self.pipeline.reset(reason="read_request")
+            if not self.receive_all:
+                self.pipeline.reset(reason="read_request")
             reads = self.polling.reads
             self.last_read = reads[self._read_index]
             self._sent_at = self.receiver.elapsed
@@ -301,7 +307,8 @@ class TelemetryListener:
         self.poll_stats.timeouts += 1
         self.last_timeout = self.last_read
         self._sent_at = None
-        self.pipeline.reset(reason="read_timeout")
+        if not self.receive_all:
+            self.pipeline.reset(reason="read_timeout")
         try:
             self._schedule_next_read()
             if self.on_poll_progress is not None:

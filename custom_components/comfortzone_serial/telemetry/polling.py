@@ -1,9 +1,15 @@
-"""Captured EX35 read groups; defaults preserve temperature-only HA polling."""
+"""Scheduling settings for captured EX35 reads and monitor query groups."""
 
 from dataclasses import dataclass
 
 from .framing import Frame, crc8_maxim
-from .queries import ALLOWED_READS, TEMPERATURE_READ, ReadDefinition, query_reads
+from .queries import (
+    ALLOWED_READS,
+    TEMPERATURE_READ,
+    ReadDefinition,
+    individual_reads,
+    query_reads,
+)
 from .stream import finite_seconds, port
 
 CLIENT_ADDRESS = b"ADDR"
@@ -54,6 +60,7 @@ class PollingSettings:
     queries: tuple[str, ...] = ("temperature",)
     cycle: bool = False
     request_delay: float = 0.25
+    read_names: tuple[str, ...] | None = None
 
     def __post_init__(self) -> None:
         if type(self.cycle) is not bool:
@@ -69,10 +76,14 @@ class PollingSettings:
             raise ValueError("Request delay must be between 0 and 3600 seconds")
         port(self.destination_port)
         pump_address(self.address)
-        query_reads(self.queries)
+        if self.read_names is not None and self.queries != ("temperature",):
+            raise ValueError("Select individual reads or groups, not both")
+        _ = self.reads  # Validate the selection before starting a transport.
 
     @property
     def reads(self) -> tuple[ReadDefinition, ...]:
+        if self.read_names is not None:
+            return individual_reads(self.read_names)
         return query_reads(self.queries)
 
     def matches(self, frame: Frame, read: ReadDefinition | None = None) -> bool:

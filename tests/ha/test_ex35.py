@@ -25,6 +25,7 @@ OPTIONS = {
     "polling_enabled": True,
     "poll_interval": 15,
     "stale_timeout": 20,
+    "read_queries": ["temperature"],
 }
 
 
@@ -37,8 +38,13 @@ async def test_ex35_polling_sensors_sentinel_freshness_and_unload(
     assert transport.sent == [(temperature_request(), (NETWORK["source_ip"], 4001))]
     registry = er.async_get(hass)
     registered = er.async_entries_for_config_entry(registry, entry.entry_id)
-    assert len(registered) == 9
-    enabled = [entity for entity in registered if entity.disabled_by is None]
+    assert len(registered) == 11
+    enabled = [
+        entity
+        for entity in registered
+        if entity.unique_id.removeprefix(entry.entry_id + "_") in EX35_TEMPERATURE_KEYS
+        and entity.disabled_by is None
+    ]
     assert len(enabled) == 9
     ids = {
         entity.unique_id.removeprefix(entry.entry_id + "_"): entity.entity_id
@@ -69,7 +75,9 @@ async def test_ex35_polling_sensors_sentinel_freshness_and_unload(
     assert "layout_validation" not in diagnostic
     assert "display_confirmed_keys" not in diagnostic
     assert "192.0.2.10" not in json.dumps(diagnostic)
-    poll_timer = coordinator.listener._poll_timer
+    poll_timer = (
+        coordinator.listener._poll_timer or coordinator.listener._response_timer
+    )
     assert await hass.config_entries.async_unload(entry.entry_id)
     sent = len(transport.sent)
     await advance(hass, freezer, 60)
@@ -79,7 +87,7 @@ async def test_ex35_polling_sensors_sentinel_freshness_and_unload(
 async def test_ex35_passive_selection_never_sends(hass, udp_endpoint):
     entry = await setup_entry(hass, options=OPTIONS | {"polling_enabled": False})
     receive(entry.runtime_data, datagrams("standalone-reply.hex")[0])
-    assert len(hass.states.async_all("sensor")) == 9
+    assert len(hass.states.async_all("sensor")) == 10
     assert all(
         state.state != STATE_UNAVAILABLE for state in hass.states.async_all("sensor")
     )
@@ -91,35 +99,51 @@ async def test_upgrade_enables_old_defaults_and_preserves_user_choices(
     hass, udp_endpoint, profile, disable_new
 ):
     entry = MockConfigEntry(
-        domain=DOMAIN, data=NETWORK, options={"profile": profile},
-        version=1, minor_version=1, pref_disable_new_entities=disable_new,
+        domain=DOMAIN,
+        data=NETWORK,
+        options={"profile": profile},
+        version=1,
+        minor_version=1,
+        pref_disable_new_entities=disable_new,
     )
     entry.add_to_hass(hass)
     registry = er.async_get(hass)
     original = {}
     for key in EX35_TEMPERATURE_KEYS:
         disabled_by = (
-            er.RegistryEntryDisabler.USER if key == "flow_water_temperature"
-            else None if key == "indoor_temperature"
+            er.RegistryEntryDisabler.USER
+            if key == "flow_water_temperature"
+            else None
+            if key == "indoor_temperature"
             else er.RegistryEntryDisabler.INTEGRATION
         )
         original[key] = registry.async_get_or_create(
-            "sensor", DOMAIN, f"{entry.entry_id}_{key}",
-            config_entry=entry, disabled_by=disabled_by,
+            "sensor",
+            DOMAIN,
+            f"{entry.entry_id}_{key}",
+            config_entry=entry,
+            disabled_by=disabled_by,
         )
     unrelated = registry.async_get_or_create(
-        "sensor", DOMAIN, f"{entry.entry_id}_unrelated",
-        config_entry=entry, disabled_by=er.RegistryEntryDisabler.INTEGRATION,
+        "sensor",
+        DOMAIN,
+        f"{entry.entry_id}_unrelated",
+        config_entry=entry,
+        disabled_by=er.RegistryEntryDisabler.INTEGRATION,
     )
     assert await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
-    assert entry.minor_version == 2
-    assert entry.options == {"profile": profile}
+    assert entry.minor_version == 3
+    assert entry.options == OPTION_DEFAULTS | {
+        "profile": profile,
+        "polling_enabled": False,
+    }
     for before in original.values():
         after = registry.async_get(before.entity_id)
         assert after.id == before.id and after.unique_id == before.unique_id
         expected = (
-            None if not disable_new
+            None
+            if not disable_new
             and before.disabled_by is er.RegistryEntryDisabler.INTEGRATION
             else before.disabled_by
         )

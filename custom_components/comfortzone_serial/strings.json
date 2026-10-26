@@ -4,12 +4,13 @@
     "step": {
       "user": {
         "title": "Set up the local receiver",
-        "description": "Listen for UDP from the Moxa. This does not configure the Moxa or verify the pump connection. Configure the Moxa destination to this Home Assistant host and local UDP port. New entries start in observation-only mode.",
+        "description": "Receive and poll local EX35 telemetry through the Moxa. Configure the Moxa destination to this Home Assistant host and local UDP port. Polling starts after setup; switch it off here for passive listening. This integration does not configure the Moxa.",
         "data": {
           "source_ip": "Moxa source IPv4 address",
           "bind_host": "Local listening IPv4 address",
           "bind_port": "Local UDP port",
-          "source_port": "Moxa source UDP port (0 accepts any)"
+          "source_port": "Moxa source UDP port (0 accepts any)",
+          "polling_enabled": "Send captured read requests"
         }
       },
       "reconfigure": {
@@ -35,30 +36,45 @@
   "options": {
     "step": {
       "init": {
-        "title": "Temperatures and local read polling",
-        "description": "For standalone EX35 operation, select the EX35 0b15 profile and enable read polling with Loggamera disconnected. Polling requests temperatures only. All nine temperature sensors are enabled by default. Times are in seconds.",
+        "title": "Read selection and polling",
+        "description": "Select individual reads for the EX35 profile. Each cycle requests them sequentially; times are in seconds. Passive mode receives the selected readings without sending. The compressor read is available for diagnostics; its values remain undecoded.",
         "data": {
           "profile": "Decoder profile",
           "stale_timeout": "Measurement freshness limit",
           "partial_timeout": "Incomplete frame timeout",
           "gap_timeout": "Reset partial data after a source gap",
-          "polling_enabled": "Send temperature read requests",
-          "poll_interval": "Read interval",
+          "polling_enabled": "Send captured read requests",
+          "poll_interval": "Polling cycle interval",
           "destination_port": "Moxa UDP listen port for requests",
-          "pump_address": "Pump protocol address (8 hex characters)"
+          "pump_address": "Pump protocol address (8 hex characters)",
+          "read_queries": "Individual reads",
+          "request_delay": "Pause between reads"
         }
       }
     },
     "error": {
-      "invalid_options": "Polling requires the EX35 profile, a valid 8-character hex pump address and port, an interval of 15–3600 seconds, a freshness limit longer than the interval, and an incomplete-frame timeout below 10 seconds. The source-gap timeout must be at least the incomplete-frame timeout."
+      "invalid_options": "Select at least one supported read. Polling requires EX35, a valid pump address and port, a cycle interval greater than 0 and at most 3600 seconds, and a pause of 0–3600 seconds. Freshness must exceed both the cycle interval and its total pauses. The incomplete-frame timeout must be below 10 seconds when polling; the source-gap timeout must be at least the incomplete-frame timeout."
     }
   },
   "selector": {
     "profile": {
       "options": {
-        "observe_only": "Observation only (default)",
+        "observe_only": "Observation only",
         "czbridge_rx50_temperatures_v1": "RX50 temperatures — 0b0d layout",
-        "ex35_0b15_temperatures_v1": "EX35 temperatures — 0b15 layout"
+        "ex35_0b15_temperatures_v1": "EX35 telemetry — 0b15 layout (default)"
+      }
+    },
+    "read_queries": {
+      "options": {
+        "temperature": "Temperature and pump clock",
+        "power": "Power",
+        "counters": "Energy and runtime counters",
+        "heating_settings": "Heating settings",
+        "hot_water_settings": "Hot-water settings",
+        "calibration": "Temperature calibration",
+        "ui_identity": "UI identity",
+        "fan_settings": "Fan settings",
+        "compressor": "Compressor (undecoded response)"
       }
     }
   },
@@ -90,6 +106,111 @@
       },
       "hot_water_temperature": {
         "name": "Hot water temperature"
+      },
+      "compressor_heat_output": {
+        "name": "Compressor heat output"
+      },
+      "auxiliary_heat_output": {
+        "name": "Auxiliary heat output"
+      },
+      "total_heat_output_1": {
+        "name": "Total heat output 1"
+      },
+      "total_heat_output_2": {
+        "name": "Total heat output 2"
+      },
+      "compressor_electrical_input": {
+        "name": "Compressor electrical input"
+      },
+      "compressor_energy": {
+        "name": "Compressor energy counter"
+      },
+      "auxiliary_energy": {
+        "name": "Auxiliary energy counter"
+      },
+      "hot_water_energy": {
+        "name": "Hot-water energy counter"
+      },
+      "compressor_runtime": {
+        "name": "Compressor runtime"
+      },
+      "total_runtime": {
+        "name": "Total runtime"
+      },
+      "heating_curve": {
+        "name": "Heating curve"
+      },
+      "calculated_heating_setting": {
+        "name": "Calculated heating setting"
+      },
+      "hot_water_setpoint": {
+        "name": "Hot-water setpoint"
+      },
+      "hot_water_hysteresis": {
+        "name": "Hot-water hysteresis"
+      },
+      "extra_hot_water_setpoint": {
+        "name": "Extra hot-water setpoint"
+      },
+      "extra_hot_water_duration": {
+        "name": "Extra hot-water duration"
+      },
+      "normal_fan_setting": {
+        "name": "Normal fan setting"
+      },
+      "reduced_fan_setting": {
+        "name": "Reduced fan setting"
+      },
+      "high_fan_setting": {
+        "name": "High fan setting"
+      },
+      "pump_clock": {
+        "name": "Pump local clock"
+      },
+      "pump_weekday": {
+        "name": "Pump weekday"
+      },
+      "ui_software_version": {
+        "name": "UI software version"
+      },
+      "ui_hardware_revision_code": {
+        "name": "UI hardware revision code"
+      },
+      "compressor_response": {
+        "name": "Compressor response",
+        "state": {
+          "undecoded": "Undecoded"
+        }
+      },
+      "te0_calibration": {
+        "name": "TE0 calibration"
+      },
+      "te1_calibration": {
+        "name": "TE1 calibration"
+      },
+      "te2_calibration": {
+        "name": "TE2 calibration"
+      },
+      "te3_calibration": {
+        "name": "TE3 calibration"
+      },
+      "te4_calibration": {
+        "name": "TE4 calibration"
+      },
+      "te5_calibration": {
+        "name": "TE5 calibration"
+      },
+      "te6_calibration": {
+        "name": "TE6 calibration"
+      },
+      "te7_calibration": {
+        "name": "TE7 calibration"
+      },
+      "te8_calibration": {
+        "name": "TE8 calibration"
+      },
+      "te9_calibration": {
+        "name": "TE9 calibration"
       }
     }
   }

@@ -22,8 +22,8 @@ Fixture provenance: [tests/data](../tests/data/README.md).
 CRC parameters are width 8, polynomial 0x31 (reflected 0x8C), initial value 0,
 reflected input/output and final XOR 0. The ASCII check vector `123456789` produces
 0xA1. The generic framer retains unknown address forms for diagnostics. The EX35
-decoder checks destination `ADDR` and its two address checksums; active polling
-also requires the configured pump source address. Observed pump address is
+decoder checks destination `ADDR` and its two address checksums; HA reception
+and active poll matching also require the configured pump source address. Observed pump address is
 `656fde02`; this is a protocol address, not a confirmed device identity.
 
 `Frame` copies and validates its input, so a decoder cannot be given a corrupt
@@ -130,10 +130,11 @@ firmware version or auto-select a profile from plausible values.
 
 All values are signed int16 little endian divided by 10. Raw **−990** (`22 fc`),
 observed in unused channels, is treated conservatively as unavailable in this
-profile. No comprehensive fault-code table or other field decoding is claimed.
+profile. No comprehensive fault-code table is established; other mapped fields are listed
+in the [read mapping](query-mapping.md).
 All nine HA entities are enabled by default and share the same presentation and
 availability rules. The evidence column above is documentation only and does not
-appear in runtime output. Other channels and registers remain unknown; no
+appear in runtime output. Unmapped channels and registers remain unknown; no
 plausibility-based substitutions or clamping occur.
 
 ## Read polling
@@ -146,35 +147,35 @@ The captured operation, reproduced exactly for the observed pump address, is:
 
 `R` reads 117 bytes (`75`) from the temperature register. A configurable pump
 address changes only the destination and checksums. The client address stays
-`ADDR`. No arbitrary payload or write-command API exists. Home Assistant uses
-only this read. The shared protocol package additionally supports the nine
-captured reads in the [monitor query mapping](query-mapping.md); only explicit
-monitor query selection enables those operations. The full 46-read cycle remains
-research evidence and is not replayed as a polling schedule.
+`ADDR`. No arbitrary payload or write-command API exists. HA and the monitor
+support the nine captured reads in the [query mapping](query-mapping.md). HA
+selects individual reads; monitor groups expand into those same definitions.
+The full 46-read cycle remains research evidence, not a polling schedule.
 
-Polling is explicitly enabled, requires the EX35 profile and sends through the
-same UDP socket that receives replies. HA retains its default 30-second request
-interval (minimum 15) and 10-second response timeout. The default
-`PollingSettings()` still selects temperature only, with fixed request spacing.
-The monitor uses `cycle=True`: its interval is between cycle starts (default 30,
-any positive value up to 3600 seconds), with a configurable `request_delay`
-(default 0.25, range 0–3600 seconds) after each compatible reply or timeout.
-Shared reads are deduplicated in selection order. Slow cycles finish before the
-next starts; the actual next start becomes its new timing origin, without
-catch-up bursts. Each listener allows one outstanding request of its own;
-other clients can poll independently. The separate `readings`
-inspector accepts exact captured reply windows and decodes covered fields without
-changing HA decoder profiles or their results. Unknown payload regions retain hex
-and offsets. A reply can match a poll even when its payload remains undecoded.
-The first matching response satisfies it. Unrelated addresses/registers, late
-responses outside a request, and subsequent duplicates cannot refresh entities.
-Partial buffers reset before every read and after timeout. UDP has no transaction
-ID here: a delayed reply during a later request cannot be perfectly distinguished.
-Likewise, clients using the captured `ADDR` address cannot distinguish which
-poller triggered an otherwise matching reply. Matching is compatible-response
-tracking, not exclusive request attribution. The monitor's independent receive
-stream displays traffic from all pollers forwarded by its selected Moxa endpoint.
-Capture timestamps are absent, so the interval is not inferred from Loggamera.
+Both use cycle scheduling: HA defaults to 60 seconds between starts, the monitor
+to 30 seconds. Both allow any positive finite value up to 3600 seconds, with
+`request_delay` (default 0.25, range
+0–3600 seconds) after a compatible reply or 10-second timeout. Duplicate reads
+are removed in selection order. Slow cycles finish before the next starts, with
+no catch-up bursts. Each listener permits one outstanding request of its own;
+other clients may poll independently. The low-level `PollingSettings()` retains
+its temperature-only fixed-spacing compatibility default; HA explicitly selects
+its five default individual reads and `cycle=True`.
+
+The `readings` decoder accepts exact captured reply windows and preserves unknown
+regions as offsets/hex. HA gates updates on the selected exact register/length,
+source pump address and live session. A valid undecoded compressor reply still
+satisfies its read. Legacy temperature decoder/replay APIs remain unchanged.
+
+Only the first matching response satisfies a pending request. Other selected
+valid replies still update HA, even when another poller caused them. HA preserves
+receive fragments across its own sends and timeouts, using the independent
+partial/gap expiry rules. The monitor keeps its own receive pipeline, displaying
+all source-filtered traffic regardless of its selected groups. Clients share
+`ADDR` and there is no transaction ID: a delayed/duplicate or another client's
+response cannot always be distinguished. Matching counts compatible replies,
+not exclusive request attribution. Freshness is local receipt age. Capture
+timestamps are absent, so polling cadence is not inferred from Loggamera.
 
 The response fixtures include CRC `05` as one 139-byte datagram and CRC `ab`
 as 104+35 bytes. CRC and exact length apply to the reconstructed frame, never to

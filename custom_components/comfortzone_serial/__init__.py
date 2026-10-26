@@ -13,7 +13,7 @@ if TYPE_CHECKING:
 async def async_migrate_entry(
     hass: HomeAssistant, entry: ComfortZoneConfigEntry
 ) -> bool:
-    """Remove former integration-imposed temperature defaults once on upgrade."""
+    """Preserve existing acquisition choices and migrate sensor defaults once."""
     from homeassistant.helpers import entity_registry as er
 
     from .const import DOMAIN
@@ -39,6 +39,31 @@ async def async_migrate_entry(
                 ):
                     registry.async_update_entity(entity_id, disabled_by=None)
         hass.config_entries.async_update_entry(entry, minor_version=2)
+    if entry.minor_version < 3:
+        from .const import (
+            CONF_POLLING_ENABLED,
+            CONF_PROFILE,
+            CONF_SOURCE_PORT,
+            OPTION_DEFAULTS,
+        )
+
+        # Former defaults were observation-only, passive, any source port.
+        # New default reads apply to EX35 entries; explicit choices remain intact.
+        options = (
+            OPTION_DEFAULTS
+            | {
+                CONF_PROFILE: "observe_only",
+                CONF_POLLING_ENABLED: False,
+            }
+            | entry.options
+        )
+        data = {CONF_SOURCE_PORT: 0} | entry.data
+        hass.config_entries.async_update_entry(
+            entry,
+            options=options,
+            data=data,
+            minor_version=3,
+        )
     return True
 
 

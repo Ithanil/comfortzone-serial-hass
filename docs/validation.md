@@ -1,54 +1,62 @@
 # Validation checkpoint — 2026-10-26
 
-Local verification on Python 3.14.7, with the pinned Home Assistant 2026.10.2
-harness. All **501 integration tests pass**:
+Local verification on Python 3.14.7 with the pinned Home Assistant 2026.10.2
+harness: **540 integration tests pass**, plus **34 parent-repository tests**,
+**574 total**. No automated test contacts the live Moxa or pump.
 
-- **465 protocol/tools tests**: existing framing/recording cases plus the exact
-  captured request cycle and replies, all 138 split points of a 139-byte response,
-  EX35 layout guards, signed values, unavailable marker, read-only request
-  generation, reply matching, timeouts/recovery and cancellation. New query tests
-  compare every allowed request byte-for-byte with the captured cycle, verify
-  mapped values and overlapping windows, reject incorrect layouts, preserve
-  unknown fields/bytes, and check ordered polling, deduplication, timeouts and
-  non-overlap. Cycle tests cover fractional intervals, reply/timeout-driven
-  advancement, overrun without catch-up bursts, duplicate and other-client
-  traffic, and cancellation. HA's default request and decoder still cover
-  temperatures only, with unchanged fixed request spacing.
-- **36 HA runtime tests**: existing passive behavior plus EX35 options, opt-in
-  polling, nine enabled entities, upgrade migration preserving explicit user
-  disables and entry-wide preferences, hot water, sentinel/stale states,
-  diagnostics and cleanup.
+Subsequent adjustment: HA's default cycle interval changed from 30 to 60 seconds.
+Test expectations and documentation were updated; suites were not rerun for this
+default-only change at the owner's request. The results below precede that tweak.
 
-An actual localhost UDP test sends the captured read through the production
-listener and receives the recorded 104+35-byte response through that same bound
-socket. All other hardware paths use fake transports. No test contacts the real
-Moxa/pump. The sandbox blocked local socket creation and event-loop worker wakeups;
-the integration suites and parent localhost cases passed outside it with their
-existing fixtures and localhost restrictions. The interrupted sandbox attempts
-are not counted as successful checks.
+- **486 protocol/tools tests:** framing, recording/replay, all captured request
+  bytes and reply layouts, split responses, address/length/CRC guards, field
+  values and unknown regions, individual-read validation, group expansion,
+  fixed/cycle scheduling, timeout continuation, overrun without catch-up bursts,
+  shared-client matching and cleanup. Persisted-settings tests cover new defaults,
+  individual read names, invalid types/timings, deduplication and long-cycle
+  freshness. The final settings-only rerun includes the new long-cycle case.
+- **54 HA runtime tests:** configuration/options, new EX35/polling/source-port
+  defaults, opt-out, migration preserving existing choices and entity identities,
+  the five default reads and 27 registered entities (26 enabled), all optional
+  reads and 43 entities (41 enabled), disabled clock/undecoded-response defaults
+  with manual enabling preserved across reload,
+  read selection/reload, user disables, recorded sensor values and metadata,
+  diagnostics, invalid clock/sentinel handling, per-field expiry, timeout
+  progression, independent shared traffic and fragment preservation across sends
+  and timeouts. Explicit Fahrenheit entity options verify calibration/hysteresis
+  conversion without an absolute-temperature offset. Existing passive/RX50,
+  lifecycle, failure recovery and live/replay isolation cases also pass.
+- **34 parent tests:** preserved-evidence integrity and the CLI monitor's unchanged
+  query groups/defaults, decoding/unknown bytes, cycle timing, simultaneous
+  temperature traffic and immediate progress reporting.
 
-Ruff, diff whitespace, local documentation links, JSON and translation
-consistency also pass. Captured fixture provenance is in
-[tests/data/README.md](../tests/data/README.md). The parent research repository has
-**34 additional passing tests** for preserved-log integrity, fixture extraction
-and the CLI monitor, including all six query groups, power polling with unrelated
-incoming frames, uniform labels, partial decoding and JSON unknown regions.
-Fast-cycle tests verify every read is logged even with zero configured pause,
-and simultaneous temperature traffic remains visible throughout the cycle.
-Together, **535 tests pass**. The new non-temperature reads have not been sent
-to the installation by automated testing; owner live trials remain outstanding.
+UDP integration cases use localhost; other device paths use fake transports and
+recorded/synthetic fixtures. The HA suite requires execution outside the sandbox
+for its event-loop worker wakeups; localhost tests also need local socket access.
+The interrupted sandbox attempt is not counted as a successful check. The final
+HA run passed all 54 cases. The protocol run passed 485 cases before the final
+freshness-bound refinement; all 21 settings cases then passed, giving 486 distinct
+passing protocol/tools cases with that addition.
 
-Commands from the standalone repository:
+Ruff, diff whitespace, local documentation links, JSON parsing and matching
+English translations pass. Fixture provenance is in
+[tests/data/README.md](../tests/data/README.md); originals were not changed.
+
+Commands from the integration repository:
 
 ```sh
 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest -q --ignore=tests/ha
 python -m pytest -c tests/ha/pytest.ini tests/ha -q
 ruff check .
-python -m compileall -q custom_components tools tests
 ```
 
-Physical validation was performed separately by the owner: repeatable reads in
-RS-422 with Loggamera physically disconnected, correct frame CRCs and three
-display-confirmed temperatures. The final connector assembly, extended polling,
-the owner's HA installation and official HACS/hassfest validation are not claimed
-as completed by these tests. Version 0.1.0 remains unreleased.
+Run the parent's `pytest` separately from the parent directory. Its collection
+is restricted to `tests/`, excluding temporary bench scripts.
+
+Physical validation was performed separately by the owner: repeatable temperature
+reads in RS-422 with Loggamera disconnected, valid frame CRCs and three
+display-confirmed temperatures. The owner also reports HA temperature polling
+already running alongside the monitor. The new reads/sensors are verified against
+captures and fake transports; standalone live trials of the additional reads,
+extended operation, deployed frontend behavior and official HACS/hassfest checks
+remain separate validation steps. Version 0.1.0 remains unreleased.
