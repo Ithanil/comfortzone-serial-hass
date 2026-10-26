@@ -146,16 +146,34 @@ The captured operation, reproduced exactly for the observed pump address, is:
 
 `R` reads 117 bytes (`75`) from the temperature register. A configurable pump
 address changes only the destination and checksums. The client address stays
-`ADDR`. No arbitrary payload or write-command API exists. Only this read is
-implemented; the 46-read Loggamera cycle is retained as research evidence.
+`ADDR`. No arbitrary payload or write-command API exists. Home Assistant uses
+only this read. The shared protocol package additionally supports the nine
+captured reads in the [monitor query mapping](query-mapping.md); only explicit
+monitor query selection enables those operations. The full 46-read cycle remains
+research evidence and is not replayed as a polling schedule.
 
 Polling is explicitly enabled, requires the EX35 profile and sends through the
-same UDP socket that receives replies. Default interval 30 seconds (minimum 15),
-response timeout 10 seconds. One outstanding request; no immediate retransmits.
+same UDP socket that receives replies. HA retains its default 30-second request
+interval (minimum 15) and 10-second response timeout. The default
+`PollingSettings()` still selects temperature only, with fixed request spacing.
+The monitor uses `cycle=True`: its interval is between cycle starts (default 30,
+any positive value up to 3600 seconds), with a configurable `request_delay`
+(default 0.25, range 0–3600 seconds) after each compatible reply or timeout.
+Shared reads are deduplicated in selection order. Slow cycles finish before the
+next starts; the actual next start becomes its new timing origin, without
+catch-up bursts. Each listener allows one outstanding request of its own;
+other clients can poll independently. The separate `readings`
+inspector accepts exact captured reply windows and decodes covered fields without
+changing HA decoder profiles or their results. Unknown payload regions retain hex
+and offsets. A reply can match a poll even when its payload remains undecoded.
 The first matching response satisfies it. Unrelated addresses/registers, late
 responses outside a request, and subsequent duplicates cannot refresh entities.
 Partial buffers reset before every read and after timeout. UDP has no transaction
 ID here: a delayed reply during a later request cannot be perfectly distinguished.
+Likewise, clients using the captured `ADDR` address cannot distinguish which
+poller triggered an otherwise matching reply. Matching is compatible-response
+tracking, not exclusive request attribution. The monitor's independent receive
+stream displays traffic from all pollers forwarded by its selected Moxa endpoint.
 Capture timestamps are absent, so the interval is not inferred from Loggamera.
 
 The response fixtures include CRC `05` as one 139-byte datagram and CRC `ab`

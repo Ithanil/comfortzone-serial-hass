@@ -1,9 +1,9 @@
-"""One captured EX35 read operation; there is no arbitrary command/write API."""
+"""Captured EX35 read groups; defaults preserve temperature-only HA polling."""
 
 from dataclasses import dataclass
 
-from .decoder import EX35_REGISTER
 from .framing import Frame, crc8_maxim
+from .queries import ALLOWED_READS, TEMPERATURE_READ, ReadDefinition, query_reads
 from .stream import finite_seconds, port
 
 CLIENT_ADDRESS = b"ADDR"
@@ -24,7 +24,14 @@ def pump_address(value: str) -> bytes:
 
 
 def temperature_request(address: str = DEFAULT_PUMP_ADDRESS) -> bytes:
-    """Reproduce the captured R request, changing only its destination/checksums."""
+    """Compatibility helper for the original captured temperature request."""
+    return read_request(TEMPERATURE_READ, address)
+
+
+def read_request(read: ReadDefinition, address: str = DEFAULT_PUMP_ADDRESS) -> bytes:
+    """Build only a whitelisted captured R operation; never accept arbitrary bytes."""
+    if read not in ALLOWED_READS:
+        raise ValueError("Only supported captured read operations may be sent")
     destination = pump_address(address)
     raw = (
         destination
@@ -33,8 +40,8 @@ def temperature_request(address: str = DEFAULT_PUMP_ADDRESS) -> bytes:
         )
         + CLIENT_ADDRESS
         + bytes([23, ord("R")])
-        + EX35_REGISTER
-        + bytes([117])
+        + read.register
+        + bytes([read.payload_length])
     )
     return raw + bytes([crc8_maxim(raw)])
 
@@ -44,21 +51,39 @@ class PollingSettings:
     interval: float = 30.0
     destination_port: int = 4001
     address: str = DEFAULT_PUMP_ADDRESS
+    queries: tuple[str, ...] = ("temperature",)
+    cycle: bool = False
+    request_delay: float = 0.25
 
     def __post_init__(self) -> None:
-        if not 15 <= finite_seconds(self.interval) <= 3600:
+        if type(self.cycle) is not bool:
+            raise ValueError("Cycle scheduling must be a boolean")
+        interval = finite_seconds(self.interval)
+        if self.cycle and not 0 < interval <= 3600:
+            raise ValueError(
+                "Cycle interval must be greater than 0 and at most 3600 seconds"
+            )
+        if not self.cycle and not 15 <= interval <= 3600:
             raise ValueError("Polling interval must be between 15 and 3600 seconds")
+        if finite_seconds(self.request_delay) > 3600:
+            raise ValueError("Request delay must be between 0 and 3600 seconds")
         port(self.destination_port)
         pump_address(self.address)
+        query_reads(self.queries)
 
-    def matches(self, frame: Frame) -> bool:
+    @property
+    def reads(self) -> tuple[ReadDefinition, ...]:
+        return query_reads(self.queries)
+
+    def matches(self, frame: Frame, read: ReadDefinition | None = None) -> bool:
+        read = read or self.reads[0]
         return (
             frame.raw[:4] == CLIENT_ADDRESS
             and frame.raw[4:6] == bytes([0x07, 0x8A])
             and frame.raw[6:10] == pump_address(self.address)
             and frame.command == ord("r")
-            and frame.register == EX35_REGISTER
-            and len(frame.payload) == 117
+            and frame.register == read.register
+            and len(frame.payload) == read.payload_length
         )
 
 

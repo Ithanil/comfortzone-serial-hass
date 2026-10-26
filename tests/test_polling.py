@@ -208,3 +208,209 @@ def test_localhost_request_and_split_reply_use_the_same_bound_socket():
                 await listener.wait_closed()
 
     asyncio.run(scenario())
+
+
+def test_multiple_queries_rotate_match_only_pending_read_and_never_overlap(monkeypatch):
+    from custom_components.comfortzone_serial.telemetry.polling import read_request
+    from tests.test_queries import captured_frames
+
+    async def scenario():
+        async def endpoint(factory, **kwargs):
+            protocol = factory()
+            transport = PollTransport(protocol)
+            protocol.connection_made(transport)
+            return transport, protocol
+
+        loop = asyncio.get_running_loop()
+        monkeypatch.setattr(loop, "create_datagram_endpoint", endpoint)
+        emitted, errors = [], []
+        settings = PollingSettings(queries=("power", "counters", "operation"))
+        listener = TelemetryListener(
+            NetworkSettings("192.0.2.1", source_port=4001),
+            TelemetryPipeline(
+                session_id="multi", origin=Origin.LIVE, profile=DecoderProfile.EX35_0B15
+            ),
+            emitted.extend,
+            errors.append,
+            polling=settings,
+        )
+        frames = captured_frames()
+        await listener.start()
+        await asyncio.sleep(0)
+        transport = listener.receiver._transport
+        try:
+            assert len(settings.reads) == 4
+            assert settings.reads[0].name == "power"
+            # The normal 30-second spacing applies even after a quick reply.
+            assert 29 < listener._poll_timer.when() - loop.time() <= 30
+            # A second poll while waiting cannot create a second outstanding read.
+            listener._poll_timer.cancel()
+            listener._poll()
+            assert len(transport.sent) == 1
+            # A valid but unrelated reply cannot satisfy the outstanding request.
+            listener.receiver.datagram_received(
+                frames[settings.reads[1].register].raw, ("192.0.2.1", 4001)
+            )
+            assert not emitted
+            for index, read in enumerate(settings.reads):
+                assert transport.sent[-1][0] == read_request(read)
+                raw = frames[read.register].raw
+                if index == 1:
+                    # Lost response: advance only after timeout, at normal spacing.
+                    listener.receiver.datagram_received(raw[:15], ("192.0.2.1", 4001))
+                    listener._response_timer.cancel()
+                    listener._timeout()
+                    assert listener.last_timeout == read
+                    listener.receiver.datagram_received(raw, ("192.0.2.1", 4001))
+                else:
+                    for chunk in (raw[:10], raw[10:37], raw[37:]):
+                        listener.receiver.datagram_received(chunk, ("192.0.2.1", 4001))
+                    before = len(emitted)
+                    listener.receiver.datagram_received(raw, ("192.0.2.1", 4001))
+                    assert len(emitted) == before  # Duplicate cannot refresh.
+                listener._poll_timer.cancel()
+                listener._poll()
+            assert transport.sent[-1][0] == read_request(settings.reads[0])
+            assert listener.poll_stats.requests_sent == 5
+            assert listener.poll_stats.replies_received == 3
+            assert listener.poll_stats.timeouts == 1
+            # Even an entirely unmapped compressor reply satisfies its exact read.
+            assert emitted[-1].result.frame.register == settings.reads[-1].register
+            assert not errors
+            poll_timer, response_timer = listener._poll_timer, listener._response_timer
+        finally:
+            listener.close()
+            await listener.wait_closed()
+        assert poll_timer.cancelled() and response_timer.cancelled()
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"interval": 0},
+        {"interval": -1},
+        {"interval": float("nan")},
+        {"interval": 3601},
+        {"request_delay": -0.1},
+        {"request_delay": float("inf")},
+        {"request_delay": 3601},
+    ],
+)
+def test_cycle_polling_rejects_invalid_timing(kwargs):
+    with pytest.raises(ValueError):
+        PollingSettings(cycle=True, **kwargs)
+
+
+def test_cycle_timing_is_independent_of_ha_request_interval():
+    settings = PollingSettings(cycle=True, interval=0.1, request_delay=0)
+    assert settings.interval == 0.1 and settings.request_delay == 0
+    assert not PollingSettings().cycle
+    with pytest.raises(ValueError):
+        PollingSettings(interval=0.1)
+
+
+def test_cycles_advance_after_reply_or_timeout_and_handle_shared_traffic(monkeypatch):
+    from tests.test_queries import captured_frames
+
+    async def scenario():
+        loop = asyncio.get_running_loop()
+        original_clock = loop.time
+        clock_offset = 0.0
+        monkeypatch.setattr(loop, "time", lambda: original_clock() + clock_offset)
+
+        async def advance(seconds):
+            nonlocal clock_offset
+            clock_offset += seconds
+            for _ in range(3):
+                await asyncio.sleep(0)
+
+        async def endpoint(factory, **kwargs):
+            protocol = factory()
+            transport = PollTransport(protocol)
+            protocol.connection_made(transport)
+            return transport, protocol
+
+        monkeypatch.setattr(loop, "create_datagram_endpoint", endpoint)
+        emitted, errors, events = [], [], []
+        settings = PollingSettings(
+            queries=("power", "counters"), cycle=True, interval=2, request_delay=0.25
+        )
+        listener = TelemetryListener(
+            NetworkSettings("192.0.2.1", source_port=4001),
+            TelemetryPipeline(
+                session_id="cycles",
+                origin=Origin.LIVE,
+                profile=DecoderProfile.EX35_0B15,
+            ),
+            emitted.extend,
+            errors.append,
+            polling=settings,
+            on_poll_progress=lambda: events.append(
+                (listener.poll_stats.requests_sent, listener.poll_stats.timeouts)
+            ),
+        )
+        frames = captured_frames()
+        power = frames[settings.reads[0].register].raw
+        counters = frames[settings.reads[1].register].raw
+        temperature = b"".join(datagrams("standalone-reply.hex"))
+        await listener.start()
+        await asyncio.sleep(0)
+        transport = listener.receiver._transport
+
+        def receive(data):
+            listener.receiver.datagram_received(data, ("192.0.2.1", 4001))
+
+        try:
+            assert len(transport.sent) == 1 and listener._poll_timer is None
+            # HA's unrelated temperature traffic cannot finish this power read.
+            receive(temperature)
+            assert listener._poll_timer is None and not emitted
+            # A compatible reply (from either poller) advances the local cycle.
+            # The captured addresses/register do not identify which client asked.
+            receive(power[:20])
+            assert listener._poll_timer is None
+            receive(power[20:])
+            timer = listener._poll_timer
+            assert 0.20 < timer.when() - loop.time() <= 0.25
+            receive(power)  # Duplicate cannot move the scheduled next request.
+            assert listener._poll_timer is timer and len(emitted) == 1
+            await advance(0.1)
+            assert len(transport.sent) == 1
+            await advance(0.2)
+            assert len(transport.sent) == 2 and listener.last_read.name == "counters"
+            receive(temperature)
+            receive(counters)
+            # The second cycle starts around t=2, not 2 seconds after completion.
+            assert 1.5 < listener._poll_timer.when() - loop.time() < 1.8
+            await advance(1.3)
+            assert len(transport.sent) == 2
+            await advance(0.5)
+            assert len(transport.sent) == 3 and listener.last_read.name == "power"
+            # Lost reply: no overlapping read despite the short cycle interval.
+            await advance(5)
+            receive(temperature)
+            assert len(transport.sent) == 3
+            await advance(5.1)
+            assert listener.poll_stats.timeouts == 1
+            assert len(transport.sent) == 3
+            await advance(0.3)
+            assert len(transport.sent) == 4 and listener.last_read.name == "counters"
+            receive(counters)
+            # The cycle overran. Resume after the pause without catch-up bursts.
+            assert 0.20 < listener._poll_timer.when() - loop.time() <= 0.25
+            await advance(0.3)
+            assert len(transport.sent) == 5 and listener.last_read.name == "power"
+            receive(power)
+            timer = listener._poll_timer
+            assert events == [(1, 0), (2, 0), (3, 0), (3, 1), (4, 1), (5, 1)]
+            assert listener.poll_stats.replies_received == 4 and not errors
+        finally:
+            listener.close()
+            await listener.wait_closed()
+        assert timer.cancelled()
+        await advance(30)
+        assert len(transport.sent) == 5
+
+    asyncio.run(scenario())

@@ -91,6 +91,13 @@ The original captures and detailed hardware history live in the separate
 See [protocol](docs/protocol.md), [fixture provenance](tests/data/README.md),
 [reference licenses](docs/references.md) and [distribution](docs/distribution.md).
 
+The shared telemetry package also provides [captured query groups and field
+inspection](docs/query-mapping.md) for the investigation repository's Moxa monitor:
+power, operation, counters, settings and misc. These are available to the monitor
+before HA entity integration. HA configuration, sensors and temperature-only
+polling remain unchanged. Unknown operation fields retain their raw data, and
+the extra requests still need standalone live trials by the owner.
+
 ```sh
 python3 -m pytest -q --ignore=tests/ha
 python3 -m tools.capture --help

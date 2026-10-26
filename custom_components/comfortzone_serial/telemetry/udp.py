@@ -1,4 +1,4 @@
-"""Asyncio UDP reception with optional, bounded EX35 temperature read polling."""
+"""Asyncio UDP reception with optional, bounded captured EX35 read polling."""
 
 import asyncio
 import socket
@@ -11,8 +11,9 @@ from .polling import (
     RESPONSE_TIMEOUT,
     PollingSettings,
     PollingStats,
-    temperature_request,
+    read_request,
 )
+from .queries import TEMPERATURE_READ, ReadDefinition
 from .stream import Datagram, Observation, Origin, TelemetryPipeline, ipv4, port
 
 
@@ -109,11 +110,15 @@ class UDPReceiver(asyncio.DatagramProtocol):
             transport.close()
 
     def send_temperature_read(self, settings: PollingSettings) -> None:
-        """Send only the captured read operation, through the bound receive socket."""
+        """Compatibility wrapper for the original temperature-only operation."""
+        self.send_read(settings, TEMPERATURE_READ)
+
+    def send_read(self, settings: PollingSettings, read: ReadDefinition) -> None:
+        """Send a supported captured read through the bound receive socket."""
         if not self.running:
             raise OSError("UDP receiver is not running")
         self._transport.sendto(
-            temperature_request(settings.address),
+            read_request(read, settings.address),
             (self.settings.source_ip, settings.destination_port),
         )
 
@@ -165,10 +170,12 @@ class UDPReceiver(asyncio.DatagramProtocol):
             self.on_error(error)
         except Exception as callback_error:
             if self._loop is not None:
-                self._loop.call_exception_handler({
-                    "message": "ComfortZone UDP error callback failed",
-                    "exception": callback_error,
-                })
+                self._loop.call_exception_handler(
+                    {
+                        "message": "ComfortZone UDP error callback failed",
+                        "exception": callback_error,
+                    }
+                )
 
 
 class TelemetryListener:
@@ -182,6 +189,7 @@ class TelemetryListener:
         on_error: Callable[[Exception], None],
         *,
         polling: PollingSettings | None = None,
+        on_poll_progress: Callable[[], None] | None = None,
     ) -> None:
         if pipeline.origin is not Origin.LIVE:
             raise ValueError("A live listener requires a live pipeline")
@@ -193,10 +201,15 @@ class TelemetryListener:
         self.receiver = UDPReceiver(settings, self._datagram, self._error)
         self._timer: asyncio.TimerHandle | None = None
         self.polling = polling
+        self.on_poll_progress = on_poll_progress
         self.poll_stats = PollingStats()
         self._poll_timer: asyncio.TimerHandle | None = None
         self._response_timer: asyncio.TimerHandle | None = None
         self._sent_at: float | None = None
+        self._read_index = 0
+        self._cycle_started_at: float | None = None
+        self.last_read: ReadDefinition | None = None
+        self.last_timeout: ReadDefinition | None = None
 
     async def start(self) -> None:
         try:
@@ -234,7 +247,7 @@ class TelemetryListener:
                 if (
                     self._sent_at is not None
                     and observation.first_stream_time >= self._sent_at
-                    and self.polling.matches(observation.result.frame)
+                    and self.polling.matches(observation.result.frame, self.last_read)
                 ):
                     accepted.append(observation)
                     self.poll_stats.replies_received += 1
@@ -242,6 +255,7 @@ class TelemetryListener:
                     if self._response_timer is not None:
                         self._response_timer.cancel()
                         self._response_timer = None
+                    self._schedule_next_read()
                 else:
                     self.poll_stats.ignored_frames += 1
             observations = accepted
@@ -252,25 +266,64 @@ class TelemetryListener:
         self._poll_timer = None
         if not self.receiver.running or self.polling is None:
             return
+        if self._sent_at is not None:
+            # Even a delayed/reentered callback must not overlap a pending read.
+            if not self.polling.cycle:
+                self._poll_timer = asyncio.get_running_loop().call_later(
+                    self.polling.interval, self._poll
+                )
+            return
         try:
             self.pipeline.reset(reason="read_request")
+            reads = self.polling.reads
+            self.last_read = reads[self._read_index]
             self._sent_at = self.receiver.elapsed
-            self.receiver.send_temperature_read(self.polling)
+            if self._read_index == 0:
+                self._cycle_started_at = self._sent_at
+            self.receiver.send_read(self.polling, self.last_read)
             if not self.receiver.running:
                 return  # An asynchronous transport error may close synchronously.
             self.poll_stats.requests_sent += 1
+            self._read_index = (self._read_index + 1) % len(reads)
             loop = asyncio.get_running_loop()
             self._response_timer = loop.call_later(RESPONSE_TIMEOUT, self._timeout)
-            self._poll_timer = loop.call_later(self.polling.interval, self._poll)
+            if not self.polling.cycle:
+                self._poll_timer = loop.call_later(self.polling.interval, self._poll)
+            if self.on_poll_progress is not None:
+                self.on_poll_progress()
         except Exception as error:
             self._error(error)
 
     def _timeout(self) -> None:
         self._response_timer = None
-        if self._sent_at is not None:
-            self.poll_stats.timeouts += 1
+        if self._sent_at is None:
+            return
+        self.poll_stats.timeouts += 1
+        self.last_timeout = self.last_read
         self._sent_at = None
         self.pipeline.reset(reason="read_timeout")
+        try:
+            self._schedule_next_read()
+            if self.on_poll_progress is not None:
+                self.on_poll_progress()
+        except Exception as error:
+            self._error(error)
+
+    def _schedule_next_read(self) -> None:
+        """Advance this listener's cycle after a compatible reply or timeout.
+
+        Other pollers remain independent. The captured protocol has no request
+        ID, so a matching response may have been triggered by another client.
+        """
+        if not self.receiver.running or self.polling is None or not self.polling.cycle:
+            return
+        delay = self.polling.request_delay
+        if self._read_index == 0:
+            elapsed = self.receiver.elapsed - self._cycle_started_at
+            delay = max(delay, self.polling.interval - elapsed)
+        # Actual next-cycle start becomes its new origin. Slow cycles never
+        # overlap or accumulate catch-up polls. Even zero delay yields the loop.
+        self._poll_timer = asyncio.get_running_loop().call_later(delay, self._poll)
 
     def _schedule(self) -> None:
         self._timer = asyncio.get_running_loop().call_later(

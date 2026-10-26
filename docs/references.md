@@ -91,3 +91,14 @@ upstream source code was copied for the captured layout or polling implementatio
 The correct vendor reference is the [NPort 5100A series QIG v3.5](https://moxa.com/getmedia/b43d0252-add7-4bf4-987b-0f6ad8811de2/moxa-nport-5100a-series-qig-v3.5.pdf),
 not the P5150A guide. Moxa pinout/settings are documented facts; the unusual
 adapter wiring is installation evidence, not a vendor recommendation.
+
+## Monitor query research, 2026-10-26
+
+The [query mapping](query-mapping.md) records the additional capture-derived
+registers, field facts and unresolved operation fields. It also references the
+unmerged 2.50 proposal at `d401d5fd141cc05f576462aa2cd9b33359f030ea`, inspected
+for contiguous settings, calibration and UI layouts. Its `0b10` layout is not
+identified with this EX35's `0b15` layout. The earlier statement that 2.50 changes
+were not included describes the original implementation checkpoint. No upstream
+source or tables were copied; new code is independently written using protocol
+facts and the owner's fixtures, under the existing MIT license.
