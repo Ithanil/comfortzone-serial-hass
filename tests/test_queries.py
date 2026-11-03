@@ -158,6 +158,37 @@ def test_captured_values(suffix, expected):
     assert all(f.status == "decoded" for f in actual.values())
 
 
+@pytest.mark.parametrize(
+    "raw_hex,expected",
+    [
+        ("4cd5ffff", -10932),  # Owner-reported unsigned spike: 4294956364 W.
+        ("ffffffff", -1),
+        ("00000080", -2147483648),
+        ("ffffff7f", 2147483647),
+        ("00000000", 0),
+        ("3c050000", 1340),
+    ],
+)
+@pytest.mark.parametrize(
+    "key,offset", [("total_heat_output_1", 6), ("total_heat_output_2", 10)]
+)
+def test_total_heat_output_signed_values_preserve_raw_bytes(
+    key, offset, raw_hex, expected
+):
+    # Synthetic payload derived from the preserved power reply, not a capture
+    # of the original incident. Each total must decode independently.
+    original = fields("015203")
+    raw = bytearray(reply("015203").raw)
+    raw[21 + offset : 21 + offset + 4] = bytes.fromhex(raw_hex)
+    actual = {f.key: f for f in decode_readings(corrected(raw)).fields}
+    assert actual[key].value == expected
+    assert actual[key].status == "decoded"
+    assert actual[key].raw_hex == raw_hex
+    assert {k: f for k, f in actual.items() if k != key} == {
+        k: f for k, f in original.items() if k != key
+    }
+
+
 def test_clock_temperatures_calibration_and_unknown_operation():
     actual = fields("010400")
     assert actual["pump_clock"].value == "2026-10-24T21:27:54"

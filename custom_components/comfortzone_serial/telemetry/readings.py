@@ -63,8 +63,11 @@ class _Field:
 _FIELDS = (
     _Field("compressor_heat_output", "power", 1, 0x352, 2, "W"),
     _Field("auxiliary_heat_output", "power", 1, 0x354, 4, "W"),
-    _Field("total_heat_output_1", "power", 1, 0x358, 4, "W"),
-    _Field("total_heat_output_2", "power", 1, 0x35C, 4, "W"),
+    # Owner reported 4294956364 W (0xffffd54c): signed interpretation is -10932 W.
+    # Preserve the sign instead of wrapping to gigawatts. The physical meaning
+    # of negative totals remains unconfirmed; raw bytes are retained in Reading.
+    _Field("total_heat_output_1", "power", 1, 0x358, 4, "W", signed=True),
+    _Field("total_heat_output_2", "power", 1, 0x35C, 4, "W", signed=True),
     _Field("compressor_electrical_input", "power", 1, 0x360, 2, "W"),
     _Field("compressor_energy", "counters", 5, 0x2C, 4, "kWh", 100),
     _Field("auxiliary_energy", "counters", 5, 0x30, 4, "kWh", 100),

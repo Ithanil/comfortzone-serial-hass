@@ -31,11 +31,18 @@ interpretation. Offsets below are zero-based payload offsets, excluding the
 
 ## Mapped fields
 
-- **Power:** offsets 0/u16, 2/u32, 6/u32 and 10/u32 are compressor heat
+- **Power:** offsets 0/u16, 2/u32, 6/i32 and 10/i32 are compressor heat
   output, auxiliary-heater output and two reported total heat-output fields;
   offset 14/u16 is compressor electrical input. All are little endian, watts.
   Capture: 1340, 0, 1340, 1340, 400 W. Keep both total fields named separately;
   equality in this capture does not establish their interchangeability.
+  The totals use signed decoding at the owner's request after a reported HA
+  spike of 4294956364 W in both fields (2026-11-03 investigation). That bit
+  pattern is `0xffffd54c`, or -10932 as i32. The incident's raw reply was not
+  available; negative heat output versus a transient invalid pump calculation
+  remains unresolved. No absolute value, clamp or guessed sentinel is applied;
+  exact raw bytes remain in diagnostics. This changes the prior unsigned
+  interpretation only for these two totals.
 - **Counters:** offsets 12, 16, 20 are u32 little-endian compressor, auxiliary
   and hot-water energy counters, divided by 100 for kWh. Offsets 24 and 28
   are u32 compressor/total runtime in minutes. Values: 2644.08, 393.52,

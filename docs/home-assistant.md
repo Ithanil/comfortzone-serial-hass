@@ -128,6 +128,11 @@ retain their IDs/history for reselection.
 Metadata follows [HA sensor semantics](https://developers.home-assistant.io/docs/core/entity/sensor/):
 
 - Measured temperatures and power use measurement statistics, in °C and W.
+  **Total heat output 1/2** use signed 32-bit decoding and can report negative
+  values. This prevents negative bit patterns from appearing as approximately
+  4.3 billion W; their physical meaning is still unresolved. See the
+  [mapping notes](query-mapping.md#mapped-fields). Existing recorded spikes are
+  not changed retroactively.
 - Energy counters use kWh; runtimes/durations use minutes. Energy and runtime
   reset/rollover behavior is not known, so they have no statistics state class
   yet. They retain ordinary recorder history, but energy counters are not offered
